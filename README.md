@@ -1,5 +1,22 @@
 # 📦 WarehouseSort — Color-Matching Pick-and-Place Challenge
 
+> **This fork (mrpc2003): post-competition RGB-track attempt on a free Colab T4.**
+> [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mrpc2003/berlin-marso-hackathon/blob/feat/colab-t4-rgb-dp/MARSO_COLAB.ipynb)
+> `MARSO_COLAB.ipynb` is the session notebook; `docs/RESEARCH.md` explains what participants found and what
+> we changed (chunked deployment, per-level episode budget, clipped demo actions, streaming loader, resume);
+> `docs/EXPERIMENTS.md` is the run log; `submission.yaml` + `checkpoints/` are the deliverable.
+> Quick start on the rgb track:
+> ```bash
+> pip install -e . && python il/download_demos.py
+> python il/train.py method=dp_rgb_easy                      # 30k iters, ~60-75 min on a T4
+> python eval.py difficulty=easy obs_mode=rgb policy=warehouse_sort.il_policy:load_dp_rgb \
+>     checkpoint=il/baselines/diffusion_policy/runs/rgb_dp_easy/checkpoints/best_eval_sort_accuracy.pt \
+>     eval_config=conf/eval/eval64.yaml
+> python -m pytest tests -q                                  # CPU tests, no simulator needed
+> ```
+> Original starter README follows.
+
+
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marso-robotics/berlin-marso-hackathon/blob/main/starter.ipynb)
 
 A robotics imitation-learning challenge built on **[ManiSkill 3](https://maniskill.readthedocs.io/en/latest/)**.

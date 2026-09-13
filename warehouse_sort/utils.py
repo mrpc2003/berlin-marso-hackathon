@@ -77,6 +77,8 @@ def rollout_metrics(env, agent, device, n_episodes, seeds, max_steps, determinis
         if take < nb:
             batch_seeds = batch_seeds + all_seeds[: nb - take]
         obs, _ = env.reset(seed=batch_seeds)
+        if hasattr(agent, "reset"):
+            agent.reset()   # drop buffered actions / obs history from the previous batch
         obs = to_device(obs, device)
         for _ in range(max_steps - 1):
             obs, _, _, _, _ = env.step(agent.act(obs, deterministic=deterministic))
@@ -110,7 +112,7 @@ def print_metrics(role, difficulty, obs_mode, m, hard=False):
     print("-" * 50, flush=True)
 
 
-def load_agent(ckpt_path, env, device, entrypoint=None):
+def load_agent(ckpt_path, env, device, entrypoint=None, policy_kwargs=None):
     """Load a policy for eval / the judge. Requires a policy entrypoint.
 
     entrypoint format: "module:function" where
@@ -131,13 +133,13 @@ def load_agent(ckpt_path, env, device, entrypoint=None):
     action_space = env.single_action_space
     mod_name, fn_name = entrypoint.split(":")
     fn = getattr(importlib.import_module(mod_name), fn_name)
-    policy = fn(ckpt_path, sample_obs, action_space, device)
+    policy = fn(ckpt_path, sample_obs, action_space, device, **dict(policy_kwargs or {}))
     assert hasattr(policy, "act"), f"policy from {entrypoint} must define .act(obs, deterministic=True)"
     return policy, None
 
 
 def record_eval_video(cfg, obs_mode, randomization, agent, device, out_dir,
-                      n_envs=4, seed=0, max_steps=None):
+                      n_envs=1, seed=0, max_steps=None):
     """Record a policy rollout to mp4 using ManiSkill's RecordEpisode wrapper."""
     from mani_skill.utils.wrappers.record import RecordEpisode
 
@@ -149,6 +151,8 @@ def record_eval_video(cfg, obs_mode, randomization, agent, device, out_dir,
         video_fps=20, max_steps_per_video=cfg.max_episode_steps,
     )
     obs, _ = env.reset(seed=seed)
+    if hasattr(agent, "reset"):
+        agent.reset()
     steps = max_steps or cfg.max_episode_steps
     for _ in range(steps):
         obs, _, _, _, _ = env.step(agent.act(to_device(obs, device), deterministic=True))
@@ -206,3 +210,13 @@ def make_env(
         env, num_envs=n, ignore_terminations=ignore_terminations, record_metrics=record_metrics
     )
     return env, is_rgb
+
+
+def append_jsonl(path, record):
+    """Append one JSON line (eval bookkeeping across Colab sessions)."""
+    import json
+    import os
+
+    os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+    with open(path, "a") as f:
+        f.write(json.dumps(record, default=str) + "\n")

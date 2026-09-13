@@ -5,6 +5,7 @@ difficulty:
   name: easy
   num_parcels: 2
   fixed_poses: true
+  max_episode_steps: 250   # demos need ~115 steps (max 115); placement is sticky, so generous is safe
 
 randomization:
   parcel_pose:

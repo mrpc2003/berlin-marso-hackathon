@@ -90,6 +90,12 @@ class Args:
     control_mode: str = 'pd_joint_delta_pos'
     """the control mode to use for the evaluation environments. Must match the control mode of the demonstration dataset."""
 
+    clip_actions: bool = True
+    """clip demo actions to [-1, 1] (what the controller actually executed)"""
+    eval_inference_steps: int = 16
+    """denoising steps for the training-time evaluator (matches deployment)"""
+    skip_initial_eval: bool = True
+
     # additional tags/configs for logging purposes to wandb and shared comparisons with other algorithms
     demo_type: Optional[str] = None
 
@@ -107,6 +113,9 @@ class SmallDemoDataset_DiffusionPolicy(Dataset): # Load everything into GPU memo
         for k, v in trajectories.items():
             for i in range(len(v)):
                 trajectories[k][i] = torch.Tensor(v[i]).to(device)
+        if getattr(args, "clip_actions", True):   # the controller executes clip(a, -1, 1); train on that
+            for i in range(len(trajectories['actions'])):
+                trajectories['actions'][i] = trajectories['actions'][i].clamp(-1.0, 1.0)
 
         # Pre-compute all possible (traj_idx, start, end) tuples, this is very specific to Diffusion Policy
         if 'delta_pos' in args.control_mode or args.control_mode == 'base_pd_joint_vel_arm_pd_joint_vel':
@@ -219,7 +228,7 @@ class Agent(nn.Module):
 
         return F.mse_loss(noise_pred, noise)
 
-    def get_action(self, obs_seq):
+    def get_action(self, obs_seq, generator=None):
         # init scheduler
         # self.noise_scheduler.set_timesteps(self.num_diffusion_iters)
         # set_timesteps will change noise_scheduler.timesteps is only used in noise_scheduler.step()
@@ -232,7 +241,7 @@ class Agent(nn.Module):
             obs_cond = obs_seq.flatten(start_dim=1) # (B, obs_horizon * obs_dim)
 
             # initialize action from Guassian noise
-            noisy_action_seq = torch.randn((B, self.pred_horizon, self.act_dim), device=obs_seq.device)
+            noisy_action_seq = torch.randn((B, self.pred_horizon, self.act_dim), device=obs_seq.device, generator=generator)
 
             for k in self.noise_scheduler.timesteps:
                 # predict noise
@@ -247,6 +256,7 @@ class Agent(nn.Module):
                     model_output=noise_pred,
                     timestep=k,
                     sample=noisy_action_seq,
+                    generator=generator,
                 ).prev_sample
 
         # only take act_horizon number of actions
@@ -260,6 +270,7 @@ def save_ckpt(run_name, tag):
     torch.save({
         'agent': agent.state_dict(),
         'ema_agent': ema_agent.state_dict(),
+        'config': policy_cfg,
     }, f'runs/{run_name}/checkpoints/{tag}.pt')
 
 if __name__ == "__main__":
@@ -360,13 +371,19 @@ if __name__ == "__main__":
     # holds a copy of the model weights
     ema = EMAModel(parameters=agent.parameters(), power=0.75)
     ema_agent = Agent(envs, args).to(device)
+    ema_agent.noise_scheduler.set_timesteps(args.eval_inference_steps)   # deployment-like eval
+    policy_cfg = dict(obs_horizon=args.obs_horizon, act_horizon=args.act_horizon, pred_horizon=args.pred_horizon,
+                      diffusion_step_embed_dim=args.diffusion_step_embed_dim, unet_dims=list(args.unet_dims),
+                      n_groups=args.n_groups, num_diffusion_iters=100, num_inference_steps=args.eval_inference_steps,
+                      scheduler='ddpm', obs_mode='state', clip_actions=args.clip_actions,
+                      max_episode_steps=args.max_episode_steps, exp_name=args.exp_name)
 
     best_eval_metrics = defaultdict(float)
     timings = defaultdict(float)
 
     # define evaluation and logging functions
     def evaluate_and_save_best(iteration):
-        if iteration % args.eval_freq == 0:
+        if iteration % args.eval_freq == 0 and (iteration > 0 or not args.skip_initial_eval):
             last_tick = time.time()
             ema.copy_to(ema_agent.parameters())
             eval_metrics = evaluate(

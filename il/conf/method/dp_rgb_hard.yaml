@@ -1,17 +1,19 @@
 # @package _global_
 # RGB (scene-cam) Diffusion Policy: image + robot proprioception only (NO privileged state).
 # ResNet18 + SpatialSoftmax encoder, DrQ random-shift aug, clipped demo actions, fp16 encoder.
-# Generic config -- prefer dp_rgb_easy / dp_rgb_medium / dp_rgb_hard (they set the episode budget).
-#   python il/train.py method=dp_rgb demo_dir=easy max_episode_steps=250 flags.exp_name=rgb_dp_easy
+# Level preset: hard demos, 800-step episodes for the training-time eval.
+#   python il/train.py method=dp_rgb_hard                      # (+ flags.ckpt_dir=/content/drive/... on Colab)
 baseline_dir: diffusion_policy
 script: train_rgbd.py
 demo_kind: rgb
+demo_dir: hard
+max_episode_steps: 800
 flags:
   obs_mode: rgb
   obs_camera: scene
   visual_encoder: resnet18   # resnet18 | plain_conv
   num_kp: 32
-  total_iters: 30000
+  total_iters: 40000
   batch_size: 128
   lr: 1.0e-4
   obs_horizon: 2
@@ -35,4 +37,4 @@ flags:
   ckpt_dir: null             # e.g. /content/drive/MyDrive/marso/ckpts/<exp>; null = runs/<exp>/checkpoints
   resume: null               # path to latest.pt to continue a run (same hyperparameters)
   exp_name_timestamp: false  # append _MMDD-HHMM to exp_name
-  exp_name: warehouse_rgb_dp
+  exp_name: rgb_dp_hard

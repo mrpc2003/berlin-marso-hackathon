@@ -12,9 +12,9 @@ defaults:
 env_id: WarehouseSort-v1
 control_mode: pd_ee_delta_pos
 sim_backend: gpu
-max_episode_steps: 200
-demo_dir: easy                  # which il/demos/<dir> dataset to train on
-demo_path: null                 # null -> auto (state/rgb dataset chosen by method.demo_kind)
+max_episode_steps: 200            # per-level method yamls (dp_rgb_easy/medium/hard) override this
+demo_dir: easy                  # il/demos/<dir> dataset(s); a list = mixed-level training
+demo_path: null                 # explicit .h5 path(s) (str or list); null -> from demo_dir + method.demo_kind
 
 hydra:
   output_subdir: null

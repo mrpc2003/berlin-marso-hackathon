@@ -1,0 +1,5 @@
+# 32 episodes (= 4 batches of num_envs=8). Same seed list as default.yaml, expanded by expand_seeds.
+eval:
+  n_episodes: 32
+  seeds: [5000, 5001, 5002, 5003, 5004, 5005, 5006, 5007,
+          5008, 5009, 5010, 5011, 5012, 5013, 5014, 5015]

@@ -8,11 +8,16 @@ seed: 0
 num_envs: 8               # for eval/test; scale up as GPU allows
 device: cuda
 control_mode: pd_ee_delta_pos
-max_episode_steps: 200
 
-# observation mode (state | rgb). Main track is STATE (privileged low-dim state vector);
-# rgb (scene image + proprioception) is the optional image track.
-obs_mode: state
+# Episode budget is PER DIFFICULTY (conf/difficulty/*.yaml, key difficulty.max_episode_steps).
+# The scripted demos need ~115 / ~236 / ~388 steps for easy / medium / hard, so the old global 200
+# made medium/hard impossible to finish. A correct placement is sticky in env.evaluate(), so a longer
+# budget can only raise sort_accuracy. NOTE: Hydra loads `difficulty` BEFORE `_self_`, so a literal
+# value here would silently override the per-level one -- keep the interpolation.
+max_episode_steps: ${difficulty.max_episode_steps}
+
+# observation mode (state | rgb). rgb = scene-camera image + proprioception (our main track).
+obs_mode: rgb
 
 camera:
   width: 128
@@ -25,6 +30,16 @@ obs_camera: scene
 checkpoint: null
 # eval config file path (eval.py only)
 eval_config: null
-# policy entrypoint "module:function" — required for eval.py / the judge
+# policy entrypoint "module:function" -- required for eval.py / the judge
 # e.g.  policy=warehouse_sort.il_policy:load_dp_rgb
 policy: null
+
+# Optional kwargs forwarded to the policy loader (eval-only knobs; the judge passes none, so
+# anything that must hold at judging time has to live in the checkpoint's `config`).
+#   python eval.py ... +policy_kwargs.act_horizon=4 +policy_kwargs.num_inference_steps=32
+policy_kwargs: {}
+
+# eval.py extras
+record_video: true        # save one rollout mp4 after the metrics (Vulkan); false = numbers only
+video_envs: 1             # envs in the video (frames are buffered in RAM -- keep small on Colab)
+results_file: null        # if set, append one JSON line with the metrics (Colab bookkeeping)

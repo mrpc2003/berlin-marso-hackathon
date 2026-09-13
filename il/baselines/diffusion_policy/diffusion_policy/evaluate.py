@@ -2,9 +2,10 @@ from collections import defaultdict
 import numpy as np
 import torch
 from tqdm import tqdm
-from mani_skill.utils import common
 
 def evaluate(n: int, agent, eval_envs, device, sim_backend: str, progress_bar: bool = True):
+    from mani_skill.utils import common  # lazy: keeps this module importable without the simulator
+
     agent.eval()
     if progress_bar:
         pbar = tqdm(total=n)

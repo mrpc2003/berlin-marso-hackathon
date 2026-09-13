@@ -1,0 +1,5 @@
+# 64 episodes for decision-grade easy evals (easy = 2 parcels/episode -> 128 parcels).
+eval:
+  n_episodes: 64
+  seeds: [5000, 5001, 5002, 5003, 5004, 5005, 5006, 5007,
+          5008, 5009, 5010, 5011, 5012, 5013, 5014, 5015]

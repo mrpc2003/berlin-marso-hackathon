@@ -27,3 +27,17 @@ il/videos/
 # run logs (training/eval/gen stdout captured to files)
 *.log
 
+
+# --- added for the Colab/T4 workflow ---
+# credentials (Colab Secrets only; two participant notebooks leaked Kaggle keys this way)
+kaggle.json
+access_token
+.kaggle/
+# training runs (checkpoints for submission are copied to checkpoints/ via tools/strip_ckpt.py)
+il/baselines/*/runs/
+il/demos/**/*.h5
+il/demos/**/*.json
+!il/demos/easy/trajectory.rgb.pd_ee_delta_pos.physx_cuda.json
+results*.jsonl
+.venv*/
+tests/_tmp/

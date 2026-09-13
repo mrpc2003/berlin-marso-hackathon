@@ -19,6 +19,8 @@ from mani_skill.utils.structs.actor import Actor
 from mani_skill.utils.structs.pose import Pose
 from transforms3d.euler import euler2quat
 
+from warehouse_sort.constants import START_QPOS as _START_QPOS
+
 TAG_BASE_COLORS = [
     [0.80, 0.10, 0.10],  # 0: red
     [0.10, 0.20, 0.80],  # 1: blue
@@ -56,7 +58,7 @@ class WarehouseSortEnv(BaseEnv):
     bin_base_x  = 0.0
     bin_base_y  = 0.36
 
-    START_QPOS = [0.0, 0.3927, 0.0, -1.9635, 0.0, 2.356, 0.7854, 0.04, 0.04]
+    START_QPOS = list(_START_QPOS)  # single source of truth: warehouse_sort/constants.py
 
     def __init__(
         self,

@@ -1,0 +1,21 @@
+# SUBMISSION MANIFEST -- read by the judge (see SUBMISSION.md). Checkpoints are stripped EMA
+# weights + policy config (tools/strip_ckpt.py); warehouse_sort.il_policy.load_dp_rgb rebuilds the
+# model from the stored config, so no extra kwargs are needed. One checkpoint per level (the parcel
+# grid depends on the parcel count, so a single hard-trained policy would not transfer to easy).
+#
+# Status: PLACEHOLDER paths until the Colab runs produce checkpoints (see docs/EXPERIMENTS.md).
+
+team: "mrpc2003"
+
+rgb:
+  policy: warehouse_sort.il_policy:load_dp_rgb
+  levels:
+    easy:   { checkpoint: checkpoints/rgb_dp_easy.pt }
+    medium: { checkpoint: checkpoints/rgb_dp_medium.pt }
+    hard:   { checkpoint: checkpoints/rgb_dp_hard.pt }
+
+# Optional state track (per-level state DP) -- add only if trained:
+# state:
+#   policy: warehouse_sort.il_policy:load_dp
+#   levels:
+#     easy:   { checkpoint: checkpoints/state_dp_easy.pt }
