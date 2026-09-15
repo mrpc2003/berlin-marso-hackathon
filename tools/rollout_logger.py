@@ -21,6 +21,14 @@ from omegaconf import OmegaConf
 from warehouse_sort.utils import load_agent, log_run_header, make_env, to_device
 
 
+def _policy_kwargs_to_container(policy_kwargs):
+    if policy_kwargs is None:
+        return {}
+    if OmegaConf.is_config(policy_kwargs):
+        return OmegaConf.to_container(policy_kwargs, resolve=True) or {}
+    return dict(policy_kwargs)
+
+
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg):
     assert cfg.checkpoint and cfg.policy
@@ -33,7 +41,7 @@ def main(cfg):
     n_envs = min(cfg.num_envs, n_eps)
     env, _ = make_env(cfg, cfg.obs_mode, randomization, num_envs=n_envs)
     base = env.unwrapped
-    policy_kwargs = OmegaConf.to_container(cfg.get("policy_kwargs") or {}, resolve=True)
+    policy_kwargs = _policy_kwargs_to_container(cfg.get("policy_kwargs"))
     agent, _ = load_agent(cfg.checkpoint, env, device, entrypoint=cfg.policy, policy_kwargs=policy_kwargs)
 
     obs, _ = env.reset(seed=[int(s) for s in seeds[:n_envs]])

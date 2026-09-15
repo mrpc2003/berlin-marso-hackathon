@@ -3,7 +3,18 @@
 # model from the stored config, so no extra kwargs are needed. One checkpoint per level (the parcel
 # grid depends on the parcel count, so a single hard-trained policy would not transfer to easy).
 #
-# Status: PLACEHOLDER paths until the Colab runs produce checkpoints (see docs/EXPERIMENTS.md).
+# RGB track only -- the state track was not trained, so it is left undeclared.
+#
+# Each checkpoint below carries the inference settings its validation run actually used, baked into
+# the stored config (the judge passes no kwargs):
+#   easy    act_horizon=8  num_inference_steps=32   source EMA iter 15000
+#   medium  act_horizon=8  num_inference_steps=16   source EMA iter 25000
+#   hard    act_horizon=8  num_inference_steps=16   source EMA iter 35000
+#
+# Source EMA SHA256 (pre-strip; stripped weights verified bit-identical to these):
+#   easy    c563ab461b4b1ad87f5a3d2d77df8453334eb6d8a3e6a86f20b7b42676352df9
+#   medium  95ecf9a9c28153aef6ceb130e7a571897806a44d2196a34bade7a5f1f811fdeb
+#   hard    3bbb7179cbb9939c4d68261525342c5f92c5b3a02bb1123b53d3a007b1b524ff
 
 team: "mrpc2003"
 
@@ -13,9 +24,3 @@ rgb:
     easy:   { checkpoint: checkpoints/rgb_dp_easy.pt }
     medium: { checkpoint: checkpoints/rgb_dp_medium.pt }
     hard:   { checkpoint: checkpoints/rgb_dp_hard.pt }
-
-# Optional state track (per-level state DP) -- add only if trained:
-# state:
-#   policy: warehouse_sort.il_policy:load_dp
-#   levels:
-#     easy:   { checkpoint: checkpoints/state_dp_easy.pt }

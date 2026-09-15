@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "checkpoints": {
+    "easy": {
+      "path": "/content/drive/MyDrive/marso/ckpts/rgb_dp_easy_s1_20260913-154033/best_eval_sort_accuracy.pt",
+      "sha256": "c563ab461b4b1ad87f5a3d2d77df8453334eb6d8a3e6a86f20b7b42676352df9",
+      "selection": "best_eval_sort_accuracy",
+      "provenance_label": "easy-verified-best",
+      "act_horizon": 8,
+      "num_inference_steps": 32,
+      "training_completed_iterations": 25000
+    },
+    "medium": {
+      "path": "/content/marso-resume/medium_resume_29000_20260914-091049/ckpts/best_eval_sort_accuracy.pt",
+      "sha256": "95ecf9a9c28153aef6ceb130e7a571897806a44d2196a34bade7a5f1f811fdeb",
+      "selection": "best_eval_sort_accuracy",
+      "provenance_label": "medium-verified-best",
+      "act_horizon": 8,
+      "num_inference_steps": 16,
+      "training_completed_iterations": 30000
+    },
+    "hard": {
+      "path": null,
+      "sha256": null,
+      "selection": "best_eval_sort_accuracy",
+      "provenance_label": "hard-verified-best",
+      "act_horizon": null,
+      "num_inference_steps": null,
+      "training_completed_iterations": null
+    }
+  },
+  "artifacts": []
+}

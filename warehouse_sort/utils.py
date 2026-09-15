@@ -62,8 +62,14 @@ def expand_seeds(seeds, n_episodes):
 
 
 @torch.no_grad()
-def rollout_metrics(env, agent, device, n_episodes, seeds, max_steps, deterministic=True):
-    """Run n_episodes deterministically and aggregate the §9.1 metrics."""
+def rollout_metrics(env, agent, device, n_episodes, seeds, max_steps, deterministic=True,
+                    *, on_reset=None, on_batch=None):
+    """Run n_episodes and aggregate the §9.1 metrics.
+
+    Optional diagnostic observers receive the existing reset and final evaluation;
+    they must not step/reset the environment or change the policy. No extra rollouts.
+    Only the first ``take`` slots belong to the requested seed list in a padded batch.
+    """
     base = env.unwrapped
     nb = base.num_envs
     all_seeds = expand_seeds(seeds, n_episodes)
@@ -77,6 +83,8 @@ def rollout_metrics(env, agent, device, n_episodes, seeds, max_steps, determinis
         if take < nb:
             batch_seeds = batch_seeds + all_seeds[: nb - take]
         obs, _ = env.reset(seed=batch_seeds)
+        if on_reset is not None:
+            on_reset(base, obs, batch_seeds[:take])
         if hasattr(agent, "reset"):
             agent.reset()   # drop buffered actions / obs history from the previous batch
         obs = to_device(obs, device)
@@ -84,6 +92,8 @@ def rollout_metrics(env, agent, device, n_episodes, seeds, max_steps, determinis
             obs, _, _, _, _ = env.step(agent.act(obs, deterministic=deterministic))
             obs = to_device(obs, device)
         ev = base.evaluate()
+        if on_batch is not None:
+            on_batch(base, ev, batch_seeds[:take])
         sc = ev["success_count"][:take]
         tot_sorted += sc.sum().item()
         tot_mis += ev["mis_sort_count"][:take].sum().item()

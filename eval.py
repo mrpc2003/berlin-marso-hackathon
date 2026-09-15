@@ -27,6 +27,14 @@ from warehouse_sort.utils import (
 )
 
 
+def _policy_kwargs_to_container(policy_kwargs):
+    if policy_kwargs is None:
+        return {}
+    if OmegaConf.is_config(policy_kwargs):
+        return OmegaConf.to_container(policy_kwargs, resolve=True) or {}
+    return dict(policy_kwargs)
+
+
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def main(cfg):
     assert cfg.checkpoint, "pass checkpoint=<path to ckpt.pt>"
@@ -42,7 +50,7 @@ def main(cfg):
     randomization = eval_cfg.get("randomization", None) or cfg.randomization
 
     obs_mode = cfg.obs_mode
-    policy_kwargs = OmegaConf.to_container(cfg.get("policy_kwargs") or {}, resolve=True)
+    policy_kwargs = _policy_kwargs_to_container(cfg.get("policy_kwargs"))
 
     n_envs = min(cfg.num_envs, n_episodes)
     env, _ = make_env(cfg, obs_mode, randomization, num_envs=n_envs)
@@ -61,7 +69,7 @@ def main(cfg):
         append_jsonl(cfg.results_file, dict(
             ts=time.strftime("%Y-%m-%d %H:%M:%S"), git=git_hash()[:8], level=cfg.difficulty.name,
             obs_mode=obs_mode, checkpoint=cfg.checkpoint, policy=cfg.policy, policy_kwargs=policy_kwargs,
-            eval_config=cfg.eval_config, n_episodes=n_episodes, seed0=int(seeds[0]),
+            eval_config=cfg.eval_config, requested_n_episodes=n_episodes, seed0=int(seeds[0]),
             max_episode_steps=int(cfg.max_episode_steps), **m))
         print(f"[eval] appended metrics -> {cfg.results_file}", flush=True)
 

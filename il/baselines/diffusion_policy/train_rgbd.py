@@ -227,6 +227,11 @@ def _git_hash():
         return "unknown"
 
 
+def _cpu_rng_state(state):
+    """torch.set_rng_state expects a contiguous CPU uint8 tensor even after CUDA map_location loads."""
+    return state.detach().cpu().contiguous().to(dtype=torch.uint8)
+
+
 def policy_config(args, state_dim, act_dim, image_hw, demo_paths):
     """What warehouse_sort.il_policy.load_dp_rgb needs to rebuild + run this model (stored in every ckpt)."""
     return dict(
@@ -350,9 +355,9 @@ if __name__ == "__main__":
         eval_history = list(ck.get("eval_history", []))
         rng = ck.get("rng")
         if rng:
-            random.setstate(rng["python"]); np.random.set_state(rng["numpy"]); torch.set_rng_state(rng["torch"])
+            random.setstate(rng["python"]); np.random.set_state(rng["numpy"]); torch.set_rng_state(_cpu_rng_state(rng["torch"]))
             if rng.get("cuda") is not None and torch.cuda.is_available():
-                torch.cuda.set_rng_state_all(rng["cuda"])
+                torch.cuda.set_rng_state_all([_cpu_rng_state(s) for s in rng["cuda"]])
         start_iteration = int(ck.get("iteration", -1)) + 1
         print(f"[train_rgbd] resumed {args.resume} at iteration {start_iteration}/{args.total_iters}", flush=True)
         if start_iteration >= args.total_iters:
