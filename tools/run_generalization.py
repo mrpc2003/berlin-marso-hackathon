@@ -21,13 +21,29 @@ def frozen_protocols():
     return json.loads((ROOT / "docs/VALIDATION_PROTOCOLS.json").read_text())
 
 
-def make_plan(manifest_path, *, allow_pending=True):
+PROTOCOLS = ("fresh_seed", "stress")
+ALL_STAGES = tuple(f"{p}/{l}" for p in PROTOCOLS for l in LEVELS)
+
+
+def parse_stages(value=None):
+    """Ordered, unique 'protocol/level' names; None means the full frozen600 order."""
+    if value is None:
+        return list(ALL_STAGES)
+    stages = [s.strip() for s in str(value).split(",")]
+    require(all(stages) and len(stages) == len(set(stages)) and all(s in ALL_STAGES for s in stages),
+            "--stages must be unique entries from: " + ", ".join(ALL_STAGES))
+    return stages
+
+
+def make_plan(manifest_path, *, allow_pending=True, stages=None):
     manifest = load_manifest(manifest_path, allow_pending=allow_pending)
+    frozen, stages = frozen_protocols(), parse_stages(stages)
+    total = sum(frozen["protocols"][s.split("/")[0]][s.split("/")[1]]["n_episodes"] for s in stages)
     return {"schema_version": 1, "status": "plan_only", "input_manifest_sha256": sha256(manifest_path),
             "protocol_sha256": sha256(ROOT / "docs/VALIDATION_PROTOCOLS.json"),
-            "frozen": frozen_protocols(), "inputs": manifest, "source_sha256": source_hashes(),
-            "entrypoint": ENTRYPOINT, "stages": [f"{p}/{l}" for p in ("fresh_seed", "stress") for l in LEVELS],
-            "total_scored_episodes": 600, "extra_policy_rollouts_for_logging": 0,
+            "frozen": frozen, "inputs": manifest, "source_sha256": source_hashes(),
+            "entrypoint": ENTRYPOINT, "stages": stages, "full_frozen600": stages == list(ALL_STAGES),
+            "total_scored_episodes": total, "extra_policy_rollouts_for_logging": 0,
             "drive_destination": "marso/validations/<validation_exp> (parent verified copy)",
             "gpu_proof": "pending", "progress_seconds": 30, "default_stage_timeout_seconds": 7200}
 
@@ -273,13 +289,15 @@ def main():
     mode.add_argument("--run", action="store_true")
     mode.add_argument("--dry-run", action="store_true")
     ap.add_argument("--stage-timeout", type=int, default=7200)
+    ap.add_argument("--stages", default=None,
+                    help="comma-separated protocol/level subset in run order; default runs all six frozen600 stages")
     ap.add_argument("--worker", nargs=4, metavar=("PLAN", "PROTOCOL", "LEVEL", "OUT"), help=argparse.SUPPRESS)
     args = ap.parse_args()
     if args.worker:
         plan, protocol, level, out = args.worker
         run_worker(plan, protocol, level, Path(out))
         return
-    plan = make_plan(args.manifest, allow_pending=not args.run)
+    plan = make_plan(args.manifest, allow_pending=not args.run, stages=args.stages)
     require(0 < args.stage_timeout <= 43200, "invalid stage timeout")
     plan["execution"] = {"python": sys.executable, "repo": str(ROOT), "out_parent": str(args.out.resolve()),
                          "stage_timeout_seconds": args.stage_timeout, "gpu_lock": str(GPU_LOCK),
@@ -296,22 +314,25 @@ def main():
         write_json(out / "preflight.json", idle)
         try:
             results = {}
-            for protocol in ("fresh_seed", "stress"):
-                results[protocol] = {}
-                for level in LEVELS:
-                    stage = out / f"{protocol}_{level}"
-                    stage.mkdir(exist_ok=False)
-                    supervised([sys.executable, str(Path(__file__).resolve()), "--worker", str(out / "plan.json"), protocol, level, str(stage)],
-                               stage, args.stage_timeout, lock_fd=lock_fd)
-                    result = json.loads((stage / "result.json").read_text())
-                    require(result["protocol"] == protocol and result["level"] == level and
-                            result["checkpoint_sha256"] == plan["inputs"]["checkpoints"][level]["sha256"],
-                            "stage identity does not match frozen checkpoint mapping")
-                    rows = [json.loads(line) for line in (stage / "episodes.jsonl").read_text().splitlines()]
-                    validate_metrics(result["metrics"], rows, plan["frozen"]["protocols"][protocol][level])
-                    results[protocol][level] = result["metrics"]
-            write_json(out / "summary.json", {"status": "completed", "official_score": False, "results": results,
-                       "weighted_proxy_scores": {p: weighted_score(r) for p, r in results.items()}, "weights": WEIGHTS,
+            for name in plan["stages"]:
+                protocol, level = name.split("/")
+                stage = out / f"{protocol}_{level}"
+                stage.mkdir(exist_ok=False)
+                supervised([sys.executable, str(Path(__file__).resolve()), "--worker", str(out / "plan.json"), protocol, level, str(stage)],
+                           stage, args.stage_timeout, lock_fd=lock_fd)
+                result = json.loads((stage / "result.json").read_text())
+                require(result["protocol"] == protocol and result["level"] == level and
+                        result["checkpoint_sha256"] == plan["inputs"]["checkpoints"][level]["sha256"],
+                        "stage identity does not match frozen checkpoint mapping")
+                rows = [json.loads(line) for line in (stage / "episodes.jsonl").read_text().splitlines()]
+                validate_metrics(result["metrics"], rows, plan["frozen"]["protocols"][protocol][level])
+                results.setdefault(protocol, {})[level] = result["metrics"]
+            # A weighted proxy needs all three levels of a protocol; partial protocols are listed, never renormalized.
+            complete = {p: r for p, r in results.items() if set(r) == set(LEVELS)}
+            write_json(out / "summary.json", {"status": "completed", "official_score": False, "stages": plan["stages"],
+                       "full_frozen600": plan["full_frozen600"], "results": results,
+                       "weighted_proxy_scores": {p: weighted_score(r) for p, r in complete.items()},
+                       "weighted_proxy_scores_omitted": sorted(set(results) - set(complete)), "weights": WEIGHTS,
                        "confidence_intervals": "not computed; parcels are not independent trials", "drive_copy": "pending_parent_verified_copy"})
         except BaseException as e:
             write_json(out / "failure.json", {"status": "failed", "error": str(e)})

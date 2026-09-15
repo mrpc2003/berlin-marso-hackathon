@@ -45,6 +45,28 @@ def test_protocol_freeze_is_complete_and_disjoint():
     assert frozen['protocols']['stress']['hard']['randomization']['parcel_pose']['yaw_jitter'] == [-.15, .15]
 
 
+def test_stage_subset_is_ordered_unique_and_frozen(tmp_path):
+    example = common.ROOT / 'docs/VALIDATION_INPUT.example.json'
+    assert general.parse_stages(None) == list(general.ALL_STAGES) and len(general.ALL_STAGES) == 6
+    assert general.parse_stages('stress/hard,fresh_seed/easy') == ['stress/hard', 'fresh_seed/easy']
+    for bad in ('stress/hard,stress/hard', 'stress/extreme', '', 'stress_hard', 'stress/hard,'):
+        with pytest.raises(ValueError, match='--stages'):
+            general.parse_stages(bad)
+    full = general.make_plan(example)
+    assert full['stages'] == list(general.ALL_STAGES) and full['total_scored_episodes'] == 600 and full['full_frozen600'] is True
+    plan = general.make_plan(example, stages='stress/hard')
+    assert plan['stages'] == ['stress/hard'] and plan['total_scored_episodes'] == 100 and plan['full_frozen600'] is False
+    assert plan['frozen'] == full['frozen'] and plan['protocol_sha256'] == full['protocol_sha256']
+    script = str(common.ROOT / 'tools/run_generalization.py')
+    target = tmp_path / 'subset'
+    r = subprocess.run([sys.executable, script, '--dry-run', '--stages', 'stress/hard', '--out', str(target)],
+                       capture_output=True, text=True, timeout=15, check=True)
+    assert json.loads(r.stdout)['stages'] == ['stress/hard'] and not target.exists()
+    r = subprocess.run([sys.executable, script, '--dry-run', '--stages', 'stress/nope', '--out', str(target)],
+                       capture_output=True, text=True, timeout=15)
+    assert r.returncode != 0 and '--stages' in r.stderr and not target.exists()
+
+
 def test_dry_plans_leave_hard_pending_and_do_not_create_output(tmp_path):
     for script in ('run_generalization.py', 'build_repro_package.py'):
         target = tmp_path / script

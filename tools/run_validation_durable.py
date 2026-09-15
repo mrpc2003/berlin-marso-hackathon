@@ -28,6 +28,28 @@ ROOT = common.ROOT
 PROTOCOL_SHA = "e480d74f53c7aa963d6058624c0f590e0f6fbdccbe2effad061760b958878507"
 DRIVE_MOUNT = Path("/content/drive")
 STAGES = tuple(f"{p}_{l}" for p in ("fresh_seed", "stress") for l in common.LEVELS)
+
+
+def plan_stage_names(plan):
+    """Stage directories owned by a plan, in the approved CLI's run order. Missing means all six."""
+    names = plan.get("stages")
+    if names is None:
+        return STAGES
+    common.require(isinstance(names, list) and names and len(set(names)) == len(names) and
+                   all(isinstance(n, str) and n.count("/") == 1 for n in names), "invalid plan stages")
+    stages = tuple(n.replace("/", "_", 1) for n in names)
+    common.require(all(s in STAGES for s in stages), "unapproved plan stages")
+    return stages
+
+
+def owned_stages(validation):
+    """Stages to report for a validation; all six until its plan is readable."""
+    if validation is not None and (validation / "plan.json").is_file():
+        try:
+            return plan_stage_names(read_json(validation / "plan.json"))
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            pass
+    return STAGES
 RECORD_FILES = {"invocation.json", "input_manifest.json", "status.json", "child.log"}
 TOP_FILES = {"plan.json", "preflight.json", "summary.json", "failure.json", "ARTIFACT_SHA256.json"}
 STAGE_FILES = {"worker.log", "progress.json", "resolved_eval_config.json", "actual_budget.json",
@@ -244,7 +266,7 @@ def progress(validation):
     result = {"validation_dir": str(validation) if validation else None,
               "validation_result": str(validation / "summary.json") if validation and (validation / "summary.json").is_file() else None,
               "phase": "preflight", "stages": {}}
-    for stage in STAGES:
+    for stage in owned_stages(validation):
         p, level = stage.rsplit('_', 1)
         spec = general.frozen_protocols()["protocols"][p][level]
         row = {"episodes": 0, "expected_episodes": 100, "metrics": None}
@@ -294,11 +316,16 @@ def verify_completed(validation, expected_sources, manifest_path):
     common.require(plan["protocol_sha256"] == PROTOCOL_SHA and plan["source_sha256"] == expected_sources,
                    "validation plan source/protocol mismatch")
     common.require(common.source_hashes() == expected_sources, "reviewed sources changed during execution")
-    common.require(plan["frozen"] == general.frozen_protocols() and plan["total_scored_episodes"] == 600,
-                   "validation did not use frozen600")
+    stages = plan_stage_names(plan)
+    expected_total = sum(plan["frozen"]["protocols"][p][l]["n_episodes"] for p, l in (s.rsplit('_', 1) for s in stages))
+    common.require(plan["frozen"] == general.frozen_protocols() and plan["total_scored_episodes"] == expected_total,
+                   "validation did not use the frozen protocol stages")
+    present = {name.split('/')[0] for name in inventory(validation) if '/' in name}
+    common.require(present == set(stages), "stage directories do not match the plan")
     summary = read_json(validation / "summary.json")
     common.require(summary.get("status") == "completed" and not (validation / "failure.json").exists(), "validation did not complete")
-    for stage in STAGES:
+    common.require(list(summary.get("stages", plan.get("stages", []))) == list(plan.get("stages", [])), "summary stages differ from the plan")
+    for stage in stages:
         p, level = stage.rsplit('_', 1)
         spec = plan["frozen"]["protocols"][p][level]
         rows = [json.loads(line) for line in read_bytes(validation / stage / "episodes.jsonl").splitlines()]
@@ -333,9 +360,12 @@ def prepare(request):
     common.require(original == read_bytes(manifest_path), "manifest changed during preflight")
     common.require(hash_file(ROOT / "docs/VALIDATION_PROTOCOLS.json") == PROTOCOL_SHA, "frozen protocol SHA changed")
     sources = common.source_hashes()
+    stages = general.parse_stages(request.get("stages"))
+    frozen = general.frozen_protocols()["protocols"]
+    episodes = sum(frozen[s.split("/")[0]][s.split("/")[1]]["n_episodes"] for s in stages)
     if request["dry_run"]:
         return {"status": "dry_run", "protocol_sha256": PROTOCOL_SHA, "source_sha256": sources,
-                "wrapper_sha256": hash_file(Path(__file__)), "episodes": 600}
+                "wrapper_sha256": hash_file(Path(__file__)), "stages": stages, "episodes": episodes}
     records = Path(request["records"])
     write_json(records / "input_manifest.json", manifest)
     remote = drive / request["name"]
@@ -344,7 +374,7 @@ def prepare(request):
         os.mkdir(request["name"], mode=0o700, dir_fd=fd)  # Never exist_ok: no past run reuse.
     finally:
         os.close(fd)
-    return {"remote_dir": str(remote), "source_sha256": sources,
+    return {"remote_dir": str(remote), "source_sha256": sources, "stages": stages, "episodes": episodes,
             "manifest_sha256": hashlib.sha256(original).hexdigest(), "wrapper_sha256": hash_file(Path(__file__))}
 
 
@@ -631,6 +661,8 @@ def bounded_job(job, interruptions=()):
 
 
 def _run(args, interruptions):
+    stages = getattr(args, "stages", None)
+    general.parse_stages(stages)  # Fail closed before any local or Drive directory exists.
     out = absolute_path(args.out)
     common.require(not out.is_relative_to(DRIVE_MOUNT) and "drive" not in [x.lower() for x in out.parts], "--out must be local, outside Drive")
     out = checked_path(out)
@@ -640,7 +672,7 @@ def _run(args, interruptions):
     with tempfile.TemporaryDirectory(prefix="marso-durable-preflight-") as scratch:
         control = checked_path(Path(scratch).resolve())
         request = dict(operation="prepare", drive_parent=str(absolute_path(args.drive)), manifest=str(absolute_path(args.manifest)),
-                       dry_run=not args.run, name=name)
+                       dry_run=not args.run, name=name, stages=stages)
         if args.run:
             parent_fd = directory_fd(out, create=True)
             try:
@@ -667,7 +699,10 @@ def _run(args, interruptions):
                        "remote_status": "pending", "termination_signal": interruptions[0]})
             return 1
         command = [sys.executable, "-B", str(ROOT / "tools/run_generalization.py"),
-                   "--manifest", str(records / "input_manifest.json"), "--out", str(validation_parent), "--run"]
+                   "--manifest", str(records / "input_manifest.json"), "--out", str(validation_parent)]
+        if stages:
+            command += ["--stages", stages]
+        command.append("--run")
         invocation = dict(prep, command=command, local_dir=str(local), records=str(records),
                           validation_parent=str(validation_parent), timeout=args.timeout,
                           sync_interval=args.sync_interval, sync_timeout=args.sync_timeout)
@@ -759,6 +794,8 @@ def main(argv=None):
     parser.add_argument("--timeout", type=int, default=14400)
     parser.add_argument("--sync-interval", type=int, default=30)
     parser.add_argument("--sync-timeout", type=int, default=60)
+    parser.add_argument("--stages", default=None,
+                        help="comma-separated protocol/level subset passed to the approved CLI; default runs all six stages")
     args = parser.parse_args(argv)
     for name in ("timeout", "sync_interval", "sync_timeout"):
         common.require(0 < getattr(args, name) <= 43200, f"{name} must be 1..43200 seconds")

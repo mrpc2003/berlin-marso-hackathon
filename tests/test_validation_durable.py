@@ -58,9 +58,10 @@ def validation_of(request):
     return durable.discover_validation(Path(request["validation_parent"]))
 
 
-def make_complete(request):
+def make_complete(request, stages=None):
     validation = validation_of(request)
     frozen = general.frozen_protocols()
+    names = list(stages) if stages else list(durable.STAGES)
     inputs = {"checkpoints": {l: {"sha256": "a" * 64} for l in common.LEVELS}}
     manifest_path = Path(request["records"]) / "input_manifest.json"
     if manifest_path.exists():
@@ -68,11 +69,13 @@ def make_complete(request):
     else:
         dump(manifest_path, inputs)
     plan = dict(protocol_sha256=durable.PROTOCOL_SHA, source_sha256=request["source_sha256"],
-                frozen=frozen, total_scored_episodes=600, inputs=inputs,
+                frozen=frozen, total_scored_episodes=100 * len(names), inputs=inputs,
                 input_manifest_sha256=durable.hash_file(manifest_path))
-    dump(validation / "plan.json", plan)
     summary = {"status": "completed", "results": {"fresh_seed": {}, "stress": {}}}
-    for stage in durable.STAGES:
+    if stages:
+        plan["stages"] = summary["stages"] = ["{}/{}".format(*s.rsplit('_', 1)) for s in names]
+    dump(validation / "plan.json", plan)
+    for stage in names:
         p, level = stage.rsplit('_', 1)
         spec = frozen["protocols"][p][level]
         directory = validation / stage
@@ -269,6 +272,39 @@ def test_final_exact_600_and_seal_content_readback(layout):
     (remote / "fresh_seed_easy" / "episodes.jsonl").write_text("{}\n")
     with pytest.raises(ValueError, match="SHA mismatch"):
         durable.verify_payload(remote)
+
+
+def test_stage_subset_reports_and_completes_only_its_plan(layout):
+    validation = make_complete(layout, stages=["stress_hard"])
+    state = durable.sync_cycle(layout)
+    assert state["status"] == "completed" and state["remote_status"] == "final_verified"
+    assert list(state["stages"]) == list(state["durable_stages"]) == ["stress_hard"]
+    assert state["stages"]["stress_hard"]["episodes"] == 100 and state["stages"]["stress_hard"]["metrics"]["n_episodes"] == 100
+    manifest = Path(layout["records"]) / "input_manifest.json"
+    receipt = durable.verify_completed(validation, layout["source_sha256"], manifest)
+    assert receipt == durable.verify_payload(Path(layout["remote_dir"]) / validation.name)
+    # A sealed tree whose plan claims fewer stages than it contains is not a completed subset.
+    plan = json.loads((validation / "plan.json").read_text())
+    (validation / "fresh_seed_easy").mkdir()
+    (validation / "fresh_seed_easy" / "episodes.jsonl").write_text("")
+    common.seal_files(validation)
+    with pytest.raises(ValueError, match="stage directories"):
+        durable.verify_completed(validation, layout["source_sha256"], manifest)
+    plan["stages"] = ["stress/nope"]
+    dump(validation / "plan.json", plan)
+    common.seal_files(validation)
+    with pytest.raises(ValueError, match="unapproved plan stages"):
+        durable.verify_completed(validation, layout["source_sha256"], manifest)
+    assert list(durable.progress(validation)["stages"]) == list(durable.STAGES)
+
+
+def test_invalid_stage_subset_fails_before_any_directory(tmp_path):
+    from types import SimpleNamespace
+    args = SimpleNamespace(manifest=tmp_path / 'manifest.json', out=tmp_path / 'out', drive=tmp_path / 'drive',
+                           run=True, timeout=5, sync_interval=1, sync_timeout=1, stages='stress/nope')
+    with pytest.raises(ValueError, match='--stages'):
+        durable.run(args)
+    assert not (tmp_path / 'out').exists() and not (tmp_path / 'drive').exists()
 
 
 @pytest.mark.parametrize("failure", ["missing_seal", "bad_seal", "partial", "source_change", "input_change", "remote_extra", "tamper_on_copy", "seal_reformatted"])

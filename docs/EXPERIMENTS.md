@@ -112,3 +112,29 @@ Decision rule: easy on 64 episodes, medium/hard on 32 (16-episode evals are nois
 - Final Drive tree reread: **31 matching files, 0 differences**. All **29 immutable receipt payloads** matched SHA-256 and size. Summary, per-setting JSONL/results, diagnostics, final/best checkpoints, status and durability were consistent. All four checkpoint payloads loaded with finite model tensors.
 - [Drive recovery folder](https://drive.google.com/drive/u/0/folders/1OWfk48qWONNZQFAfdGOYyWeORoniGue8). Detailed local completion report and validation records: `outputs/s2_cursor_audit_20260914_1543/continued_run/COMPLETION.md`. Canonical handoff is updated to completed; previous snapshots remain in timestamp backups.
 - Cursor's completed execution output was saved; `RUN_RESUME=False` restored. All six original reviewed source cells are preserved plus the separate read-only prelaunch cell. Runtime was not stopped/restarted. No commit/push/submission/hard/ACT launch. No required work remains.
+
+
+## S4 stress_hard 재실행 — COMPLETED (2026-09-15 14:27 KST, Drive 영수증 검증)
+
+- 배경: 첫 600회 검증 `durable_20260915-001259_21b868e5…`는 5단계를 완료·봉인한 뒤 `stress_hard` 8/100에서 Colab VM 회수로 중단됐다. 남은 한 단계만 다시 돌리기 위해 `tools/run_generalization.py`와 `tools/run_validation_durable.py`에 `--stages`(순서 있는 `protocol/level` 부분집합) 옵션을 추가했다. 시드·프로토콜 JSON(`e480d74f…`)과 세 체크포인트 SHA는 변경하지 않았다. 부분 실행은 `summary.json`에 `stages`/`full_frozen600=false`를 기록하고 가중 점수를 계산하지 않는다. CPU 테스트 126건 통과(신규 4건 포함).
+- 실행: 새 T4 런타임에서 `MARSO_STRESS_HARD_RERUN_20260915.ipynb`(Drive 소스 zip `3a4c5e71…`, 래퍼 `0f1ee625…`)로 `--stages stress/hard` 단독 실행. 사용자가 Cursor에서 셀을 실행했고, 셀 3의 `StopIteration`은 래퍼가 첫 JSON 줄을 쓰기 전에 상태 셀이 돌아 생긴 타이밍 문제로 결과와 무관하다.
+- 결과 `durable_20260915-045610_0e7953d2…` / `validation_20260915-045612-755688117`: status **completed**, remote **final_verified**, seal `a41ddc89…`(14 files), hard 체크포인트 `3bbb7179…` (act_horizon 8, 16 steps), seeds 8000–8099, pose_effect verified.
+
+| 지표 | 값 |
+|---|---|
+| sort_accuracy | 388/600 = **0.6467** |
+| all_placed_rate | 0.41 |
+| mis_sort_rate | 0.01 |
+| mean_steps | 617.7 / 800 |
+| 에피소드별 분류 개수 분포 (0..6) | 9 / 10 / 14 / 9 / 8 / 9 / 41 |
+| 계산 시간 | 1714 s |
+
+- 600회 검증 최종 표 (앞 5단계는 `durable_20260915-001259…` 봉인 결과, stress_hard는 본 실행):
+
+| 단계 | easy | medium | hard | 0.2/0.3/0.5 가중 |
+|---|---|---|---|---|
+| fresh_seed (6000–6099) | 0.990 | 0.890 | 0.885 | **0.9075** |
+| stress (8000–8099) | 0.975 | 0.7175 | 0.6467 | **0.7336** |
+
+- 해석: stress hard는 위치 ±0.03 m, yaw ±0.15 rad, bin ±0.01 m 교란에서 fresh_seed 대비 24 pt 하락했고, 41%의 에피소드만 6개 전부 분류했다. 자체 프록시이며 공식 held-out 점수가 아니다.
+- 로컬 사본: `outputs/s4_stress_hard_rerun_20260915/drive_copy/`, 결합 표 `outputs/s4_stress_hard_rerun_20260915/combined_600_metrics.json`. 커밋·푸시·제출은 하지 않았다.
