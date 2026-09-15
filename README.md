@@ -14,6 +14,18 @@
 >     eval_config=conf/eval/eval64.yaml
 > python -m pytest tests -q                                  # CPU tests, no simulator needed
 > ```
+> **Results of this fork** (600-episode local validation on frozen seeds, RGB track; **not** the official
+> held-out score — full report in [docs/WRITEUP.md](docs/WRITEUP.md)):
+>
+> | protocol | easy | medium | hard | weighted 0.2/0.3/0.5 |
+> |---|---|---|---|---|
+> | fresh_seed (seeds 6000–6099) | 0.990 | 0.890 | 0.885 | **0.9075** |
+> | stress (seeds 8000–8099, wider jitter) | 0.975 | 0.7175 | 0.6467 | **0.7336** |
+>
+> Judge-style run from a clean clone: `pixi install`, then
+> `pixi run python eval.py difficulty=hard obs_mode=rgb policy=warehouse_sort.il_policy:load_dp_rgb checkpoint=checkpoints/rgb_dp_hard.pt eval_config=conf/eval/eval32.yaml record_video=false`.
+> Licence for this fork's contributions: [LICENSE](LICENSE) (MIT).
+>
 > Original starter README follows.
 
 
