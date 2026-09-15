@@ -138,3 +138,18 @@ Decision rule: easy on 64 episodes, medium/hard on 32 (16-episode evals are nois
 
 - 해석: stress hard는 위치 ±0.03 m, yaw ±0.15 rad, bin ±0.01 m 교란에서 fresh_seed 대비 24 pt 하락했고, 41%의 에피소드만 6개 전부 분류했다. 자체 프록시이며 공식 held-out 점수가 아니다.
 - 로컬 사본: `outputs/s4_stress_hard_rerun_20260915/drive_copy/`, 결합 표 `outputs/s4_stress_hard_rerun_20260915/combined_600_metrics.json`. 커밋·푸시·제출은 하지 않았다.
+
+
+## S5 클린 클론 판정 스모크 — PASSED (2026-09-15 15:47 KST, SSH T4 호스트 milabt4)
+
+- 목적: 채점자 절차(`git clone` main → `pixi install` → `eval.py`)를 학습 런타임과 무관한 머신에서 재현. 스타터 `pixi.lock`은 torch 2.12.0+cu130 / numpy 2.4.6을 고정하는데 학습·검증은 torch 2.11 / numpy 1.26에서 했으므로 이 차이가 실제 실행에 영향을 주는지 확인.
+- 호스트: Ubuntu 22.04, Tesla T4 ×4(GPU 0 사용), 드라이버 580.178.04. 사전 조치: 9/11 자동 업데이트로 어긋난 NVIDIA 커널 모듈을 재로드(580.173.02 → 580.178.04, 재부팅 없음), `libvulkan1 vulkan-tools` 설치(NVIDIA ICD는 이미 존재).
+- 절차(`smoke_ssh.py`, 결과 `outputs/s5_clean_clone_smoke_20260915/milabt4_20260915_062146/`): clone main `6f93ed0` → 체크포인트 3개 SHA 일치 → `pixi install --locked` 141 s → env probe `{"torch": "2.12.0+cu130", "cuda": true, "gpu": "Tesla T4", "numpy": "2.4.6", "mani_skill": "3.0.1", "sapien": "3.0.3"}` → 엔트리포인트 import OK → eval 6회. `pixi run install`은 upstream `pixi.toml`에 task가 없어 실패(비치명; warehouse_sort는 editable pypi 의존성으로 이미 설치됨).
+
+| eval_config | easy | medium | hard | 학습 런타임 기준값(32회, 같은 시드·설정) |
+|---|---|---|---|---|
+| default (4회, seed 5000+) | 1.000 | 1.000 | 1.000 | – |
+| eval32 (32회, seed 5000+) | 0.984 (31/32 전량) | 1.000 | 0.953 (29/32 전량) | 1.000 / 0.984 / 0.964 |
+
+- 차이는 최대 1.6 pt(easy·medium ±1 에피소드, hard −1.0 pt)로 판정 재현 규정(5%)을 만족. 오분류 0. 평가 시간 easy 123 s / medium 259 s / hard 413 s.
+- 판단: `main`의 제출본은 판정 환경 그대로 설치·실행되며 CUDA 13 빌드 torch도 드라이버 580 이상에서 동작. 남은 미확인 항목은 공식 held-out 점수뿐.

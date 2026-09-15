@@ -1,313 +1,266 @@
-# 📦 WarehouseSort — Color-Matching Pick-and-Place Challenge
+English | [한국어](README.ko.md)
 
-> **This fork (mrpc2003): post-competition RGB-track attempt on a free Colab T4.**
-> [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mrpc2003/berlin-marso-hackathon/blob/feat/colab-t4-rgb-dp/MARSO_COLAB.ipynb)
-> `MARSO_COLAB.ipynb` is the session notebook; `docs/RESEARCH.md` explains what participants found and what
-> we changed (chunked deployment, per-level episode budget, clipped demo actions, streaming loader, resume);
-> `docs/EXPERIMENTS.md` is the run log; `submission.yaml` + `checkpoints/` are the deliverable.
-> Quick start on the rgb track:
-> ```bash
-> pip install -e . && python il/download_demos.py
-> python il/train.py method=dp_rgb_easy                      # 30k iters, ~60-75 min on a T4
-> python eval.py difficulty=easy obs_mode=rgb policy=warehouse_sort.il_policy:load_dp_rgb \
->     checkpoint=il/baselines/diffusion_policy/runs/rgb_dp_easy/checkpoints/best_eval_sort_accuracy.pt \
->     eval_config=conf/eval/eval64.yaml
-> python -m pytest tests -q                                  # CPU tests, no simulator needed
-> ```
-> **Results of this fork** (600-episode local validation on frozen seeds, RGB track; **not** the official
-> held-out score — full report in [docs/WRITEUP.md](docs/WRITEUP.md)):
->
-> | protocol | easy | medium | hard | weighted 0.2/0.3/0.5 |
-> |---|---|---|---|---|
-> | fresh_seed (seeds 6000–6099) | 0.990 | 0.890 | 0.885 | **0.9075** |
-> | stress (seeds 8000–8099, wider jitter) | 0.975 | 0.7175 | 0.6467 | **0.7336** |
->
-> Judge-style run from a clean clone: `pixi install`, then
-> `pixi run python eval.py difficulty=hard obs_mode=rgb policy=warehouse_sort.il_policy:load_dp_rgb checkpoint=checkpoints/rgb_dp_hard.pt eval_config=conf/eval/eval32.yaml record_video=false`.
-> Licence for this fork's contributions: [LICENSE](LICENSE) (MIT).
->
-> Original starter README follows.
+<div align="center">
 
+# 📦 WarehouseSort · RGB Diffusion Policy
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/marso-robotics/berlin-marso-hackathon/blob/main/starter.ipynb)
+### Camera-only parcel sorting trained on a free Colab T4, validated on 600 frozen-seed episodes
 
-A robotics imitation-learning challenge built on **[ManiSkill 3](https://maniskill.readthedocs.io/en/latest/)**.
+*Post-competition fork of the Marso Hack Berlin 2026 starter. The policy sees a 128×128 scene camera and 26-d proprioception only, and reaches 0.9075 / 0.7336 weighted sort accuracy on the fresh_seed / stress protocols.*
 
-A Franka Panda robot must sort parcels by color: pick each parcel from the inbound zone and
-place it in the bin that matches the **colored tag on its top face** (red tag → red bin, blue
-tag → blue bin). At harder levels the bin positions swap between episodes, so the robot must
-read the colors rather than memorize a side.
+<p>
+  <img src="https://img.shields.io/badge/Python-3.12-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python" />
+  <img src="https://img.shields.io/badge/PyTorch-2.11_train_·_2.12_judge-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white" alt="PyTorch" />
+  <img src="https://img.shields.io/badge/ManiSkill-3.0.1-0F766E?style=for-the-badge" alt="ManiSkill" />
+  <img src="https://img.shields.io/badge/Colab-T4_free-F9AB00?style=for-the-badge&logo=googlecolab&logoColor=white" alt="Colab T4" />
+  <img src="https://img.shields.io/badge/Hydra-config-89B8CD?style=for-the-badge" alt="Hydra" />
+</p>
 
-### 🎬 What a solved episode looks like
+<p>
+  <img src="https://img.shields.io/badge/Track-RGB_only-7C3AED?style=flat-square" alt="RGB track" />
+  <img src="https://img.shields.io/badge/fresh__seed-0.9075-16A34A?style=flat-square" alt="fresh_seed weighted" />
+  <img src="https://img.shields.io/badge/stress-0.7336-2563EB?style=flat-square" alt="stress weighted" />
+  <img src="https://img.shields.io/badge/Judge_smoke-PASSED-2E7D32?style=flat-square" alt="Clean-clone smoke" />
+  <img src="https://img.shields.io/badge/Checkpoints-3_×_35.8_MB-555555?style=flat-square" alt="Checkpoints" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT_(fork_additions)-blue?style=flat-square" alt="License" /></a>
+</p>
 
-The scripted policy (used only to generate the demonstrations) sorting parcels into the
-color-matched bins — left panel is the scene view, right panel is the policy's camera:
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/mrpc2003/berlin-marso-hackathon/blob/main/MARSO_COLAB.ipynb)
+
+</div>
+
+---
+
+## 📑 Table of Contents
+
+- [🧭 About](#-about)
+- [🎯 Headline Results](#-headline-results)
+- [🏗 Architecture](#-architecture)
+- [🔧 What Changed vs. the Starter](#-what-changed-vs-the-starter)
+- [🧪 Validation Protocol](#-validation-protocol)
+- [🛠 Tech Stack](#-tech-stack)
+- [🗂 Project Structure](#-project-structure)
+- [🚀 Quick Start](#-quick-start)
+- [📝 Reproducing](#-reproducing)
+- [🔒 What Is (Not) in Git](#-what-is-not-in-git)
+- [⚠️ Limitations](#️-limitations)
+- [📚 Attribution and License](#-attribution-and-license)
+- [👤 Author](#-author)
+
+## 🧭 About
+
+This repository is my fork of [marso-robotics/berlin-marso-hackathon](https://github.com/marso-robotics/berlin-marso-hackathon), the starter for the Kaggle [Marso Hack Berlin 2026 — Robot Parcel Sorting Challenge](https://www.kaggle.com/competitions/marso-hack-berlin-2026-robot-parcel-sorting-challenge). A Franka Panda in ManiSkill 3 has to read the color tag on each parcel and drop it into the matching bin. The competition closed on 2026-06-21; this fork is a post-competition attempt at the optional **RGB track**, trained only on free Colab T4 sessions and validated on a 600-episode protocol that was sealed before any result was seen.
+
+> **TL;DR** — A 6.11M-parameter RGB Diffusion Policy (ResNet18 + SpatialSoftmax → FiLM-conditioned 1D U-Net, DDPM) reaches easy 0.990 / medium 0.890 / hard 0.885 sort accuracy on fresh seeds (weighted 0.9075) and 0.7336 under wider stress randomization. During the competition the verified RGB best was ACT at roughly 0.21 weighted, and no participant reported a nonzero pure-RGB Diffusion Policy score (different judge seeds, so not directly comparable).
+
+What the fork adds: an RGB training and evaluation workflow that fits Colab T4 (chunked deployment, per-level episode budgets, clipped demo actions, streaming h5 loader, exact resume), three stripped checkpoints plus `submission.yaml`, a frozen validation lane (`tools/run_generalization.py`), and Korean write-ups. The original challenge README is preserved verbatim in [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md); the submission contract is in [SUBMISSION.md](SUBMISSION.md).
 
 | easy (2 parcels) | medium (4 parcels) | hard (6 parcels, bins may swap) |
 |:---:|:---:|:---:|
 | ![easy demo](media/easy_demo.gif) | ![medium demo](media/medium_demo.gif) | ![hard demo](media/hard_demo.gif) |
 
----
+<sub>The starter's scripted demonstration policy solving each level (the source of the training demos). Left: scene view, right: the policy's camera.</sub>
 
-## 🏁 The challenge — state-based sorting
+## 🎯 Headline Results
 
-The **main track is state-based**: your policy reads the **privileged low-dim state vector**
-(robot proprioception + parcel poses & tag colors + bin positions & colors) and outputs actions.
-A complete **state Diffusion Policy pipeline** is provided — download demos → train → eval,
-runnable end-to-end. It's your starting point, not a finished solution — your job is to improve it
-and generalize across levels and the held-out layouts.
+100 episodes per level × 2 protocols = 600 episodes. Seeds and randomization ranges were frozen first in [docs/VALIDATION_PROTOCOL.md](docs/VALIDATION_PROTOCOL.md), and every stage sealed its `result.json` so nothing could be picked after the fact. **This is not the official held-out score.** Full report: [docs/WRITEUP.md](docs/WRITEUP.md) (Korean).
 
-**Any _learned_ approach is welcome** — imitation learning on the provided demos, reinforcement
-learning from the sparse `+1` reward, or anything else (see [SUBMISSION.md](SUBMISSION.md) for the
-contract).
+| Protocol | Level | Episodes | Sort accuracy | All placed | Mis-sort | Mean steps |
+|---|---|---:|---:|---:|---:|---:|
+| fresh_seed (seeds 6000–6099) | easy | 100 / 100 | **0.9900** | 0.98 | 0.00000 | 114.5 |
+| fresh_seed | medium | 100 / 100 | **0.8900** | 0.86 | 0.00500 | 271.5 |
+| fresh_seed | hard | 100 / 100 | **0.8850** | 0.76 | 0.00167 | 460.8 |
+| stress (seeds 8000–8099, wider jitter) | easy | 100 / 100 | **0.9750** | 0.95 | 0.00000 | 118.2 |
+| stress | medium | 100 / 100 | **0.7175** | 0.67 | 0.00000 | 324.0 |
+| stress | hard | 100 / 100 | **0.6467** | 0.41 | 0.01000 | 617.7 |
 
-> 🔭 **Optional image track.** If you want a harder, more realistic challenge, an RGB Diffusion
-> Policy template is also provided (policy sees only a scene-camera image + proprioception). It is
-> not yet solving the task — try it after the state track. See [il/README.md](il/README.md).
+| Weighted (0.2 / 0.3 / 0.5) | fresh_seed | stress |
+|---|---:|---:|
+| Sort accuracy | **0.9075** | **0.7336** |
 
-> ⚠️ **Every submission must be a *learned* policy** — a parameterized model trained to map the
-> **observation → action**. Hand-coded / scripted / rule-based controllers are **not allowed**,
-> even though the state observation would make one easy to write — we use a scripted policy *only*
-> to generate the demonstrations. Anything that is not a learned observation→action mapping (or
-> that reads privileged simulator state outside the provided observation) is grounds for
-> **disqualification**.
+- Mis-sort stays at or below 1% in every stage. Failures are parcels left unsorted within the step budget, not parcels in the wrong bin.
+- easy fresh_seed runs on a fixed layout, so it measures repeatability rather than spatial generalization.
+- stress hard was rerun alone with the same checkpoint and seeds after the first VM was reclaimed at 8/100 (`--stages stress/hard`); the 8 overlapping episodes matched bit for bit.
 
----
+**Judge-style clean-clone smoke** (2026-09-15, separate T4 host): `git clone main` → `pixi install --locked` (141 s; torch 2.12.0+cu130 · numpy 2.4.6 · mani_skill 3.0.1) → `eval.py`. eval32 easy 0.984 / medium 1.000 / hard 0.953, within 1.6 pt of the training-runtime references (1.000 / 0.984 / 0.964). Record: [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) S5.
 
-## 🎚️ Difficulty levels
+**Submission integrity, 6 / 6 passed**: EMA weights bit-identical after stripping 3/3 · strict state-dict load 0 missing / 0 unexpected · judge contract load → act 3/3 · offline fresh-clone load 3/3 · SHA256 of the validated EMA ↔ submitted file 3/3 · 35.8 MB per checkpoint < 100 MB.
 
-| Level | Parcels | Randomization |
-|-------|---------|--------------|
-| **easy** | 2 | Fully fixed — same parcel positions and bin sides every episode |
-| **medium** | 4 | Small parcel position jitter, fixed orientation, fixed bin sides |
-| **hard** | 6 | Small parcel position jitter, slight orientation jitter, and bin sides may swap between episodes |
+## 🏗 Architecture
 
-Held-out evaluation uses the same difficulty levels with different seeds and slightly wider
-position randomization — build for generalization, not for the exact training layout.
-
----
-
-## 🏆 Scoring
-
-### Primary metric — Sort accuracy
-
-**Sort accuracy** is the fraction of parcels placed in the correct-color bin by episode end.
-It is the **only metric that determines your ranking**.
-
-The check is **geometric and deterministic**: a parcel is correctly sorted when its body
-rests inside the footprint of the matching-color bin and is settled low (below the rim).
-
-### Final score — weighted average across all three levels
-
-| level | weight |
-|-------|--------|
-| easy | 0.2 |
-| medium | 0.3 |
-| hard | 0.5 |
-
-```
-final_score = 0.2 × sort_accuracy_easy
-            + 0.3 × sort_accuracy_medium
-            + 0.5 × sort_accuracy_hard
+```mermaid
+flowchart LR
+  subgraph OBS["👁 Observation (no privileged state)"]
+    RGB["scene camera<br/>128×128×3 · 2 frames"]
+    PROP["proprio 26<br/>qpos 9 · qvel 9 · tcp 7 · grasp 1"]
+  end
+  subgraph ENC["🧠 Visual encoder"]
+    RES["ResNet18 → layer3<br/>256×8×8 · BN→GN · fp16"]
+    SSM["SpatialSoftmax<br/>32 keypoints → 64 → 256"]
+  end
+  COND["condition c = 564<br/>2 × (256 + 26) ⊕ step k 64"]
+  subgraph DP["🎯 Diffusion Policy · 6.11M"]
+    UNET["ConditionalUnet1D<br/>FiLM · 64·128·256 · skip"]
+    DDPM["DDPM reverse process<br/>K = 16 (easy 32)"]
+  end
+  CHUNK["chunk execution<br/>predict 16 → execute 8"]
+  ENV["ManiSkill WarehouseSort-v1<br/>pd_ee_delta_pos 4"]
+  RGB --> RES --> SSM --> COND
+  PROP --> COND
+  COND --> UNET
+  UNET -- "ε̂ · ×K" --> DDPM
+  DDPM --> CHUNK --> ENV
+  ENV -. "next obs · replan when the queue is empty" .-> RGB
 ```
 
-Higher weights on harder levels reward generalisation.
+| Item | Value |
+|---|---|
+| Algorithm | `BC_Diffusion_rgb_UNet` (`il/baselines/diffusion_policy/train_rgbd.py`) · 6.11M parameters |
+| Observation / action | rgb 128×128×3 + state 26 · obs_horizon 2 → pred_horizon 16 → act_horizon 8 · 4-d action in `[−1, 1]` |
+| Encoder | ResNet18, ImageNet init, BN→GroupNorm, truncated at layer3 → 1×1 conv 32 → SpatialSoftmax (x, y)×32 → Linear 256 |
+| Noise predictor | ConditionalUnet1D, down_dims [64, 128, 256], kernel 5, GroupNorm 8, mid ×2, FiLM conditioning |
+| Diffusion | DDPM 100 training steps, squaredcos_cap_v2, ε-prediction, clip_sample · 16 inference steps (easy 32) |
+| Optimization | AdamW 1e-4, β (0.95, 0.999), wd 1e-6 · cosine (warmup 500) · AMP · EMA power 0.75 · batch 128 |
+| Data | 200 demos per level, (obs 2, action 16) windows, pad 1 / 14, actions clipped to [−1, 1], RandomShift pad 4 |
+| Training / selection | easy 25k · medium 30k · hard 40k iters · every 5k, 32 EMA rollouts → best EMA at 15k · 25k · 35k |
+| Submission | `checkpoints/rgb_dp_{easy,medium,hard}.pt` = EMA weights + config (`tools/strip_ckpt.py`), 35.8 MB each |
 
----
+## 🔧 What Changed vs. the Starter
 
-## 🚀 Quick start
+Structural problems found in participant write-ups and by measuring the starter itself (full evidence in [docs/RESEARCH.md](docs/RESEARCH.md)).
+
+1. **Chunked deployment** — the starter's RGB policy re-sampled a fresh diffusion plan every step, executed only its first action, and faked the observation history. `ChunkedPolicy` in `warehouse_sort/il_policy.py` executes `act_horizon` = 8 actions per plan, the same way the in-training evaluator does.
+2. **Per-level episode budget** — demos take about 115 / 235 / 350–780 steps on easy / medium / hard, but `max_episode_steps` was 200 everywhere. It is now 250 / 500 / 800.
+3. **Clipped demo actions** — the scripted policy emits deltas up to 3.66 while the simulator clips to [−1, 1] before executing. The loader clips the targets to what was actually executed.
+4. **Streaming h5 loader with the dataset resident on the GPU as uint8** — replaces the loader that materialised the whole h5 in RAM, so hard (3.8 GB) trains on Colab; `capture_video=false` avoids a 5 GB frame buffer.
+5. **Exact resume and config-carrying checkpoints** — `latest.pt` every 2.5k iterations stores optimizer, scheduler, EMA and RNG state so a reclaimed Colab session resumes where it stopped; every checkpoint carries its `config`, and the loaders rebuild the model from it.
+
+## 🧪 Validation Protocol
+
+`docs/VALIDATION_PROTOCOLS.json` is the machine-readable authority and lists all 100 seeds per stage. They are disjoint from the checkpoint-selection seeds (5000+) and from the in-training evaluation seeds.
+
+| Protocol / level | Parcel XY (m) | Yaw (rad) | Bin swap prob. | Bin XY (m) | Parcels / max steps |
+|---|---|---|---:|---|---|
+| fresh_seed / easy | 0 | 0 | 0 | 0 | 2 / 250 |
+| fresh_seed / medium | ±0.015 | 0 | 0 | 0 | 4 / 500 |
+| fresh_seed / hard | ±0.020 | ±0.10 | 0.5 | 0 | 6 / 800 |
+| stress / easy | ±0.010 | ±0.05 | 0 | ±0.005 | 2 / 250 |
+| stress / medium | ±0.025 | ±0.05 | 0 | ±0.005 | 4 / 500 |
+| stress / hard | ±0.030 | ±0.15 | 0.5 | ±0.010 | 6 / 800 |
+
+- Four environments run sequential batches of four (25 batches per stage). The batch size is frozen because it changes the random-number stream.
+- Each stage seals its `result.json`; stages run sequentially under tmux. Sealed stages are never reused, and only an interrupted stage is rerun with `--stages`.
+- Before evaluation the runner records the protocol JSON's SHA256, every allow-listed source hash, the input manifest hash, and the fully resolved configuration.
+
+## 🛠 Tech Stack
+
+| Role | Tools |
+|---|---|
+| Simulation | ManiSkill 3.0.1 · SAPIEN 3.0.3 · Vulkan/EGL rendering (works on a T4) |
+| Model | PyTorch 2.11 (+cu128, training) · torchvision ResNet18 · diffusers 0.38 DDPMScheduler |
+| Config and training | Hydra method configs (`il/conf/method/dp_rgb_*.yaml`) · AMP · EMA · TensorBoard |
+| Compute | Free Colab T4 sessions (≤ 3 h) with Drive-backed resume · judge smoke on an SSH T4 host |
+| Validation | `tools/run_generalization.py` frozen lane · sealed `result.json` · tmux · per-episode `episodes.jsonl` |
+| Packaging | `pixi.lock` (judge environment: torch 2.12.0+cu130, numpy 2.4.6) · `tools/strip_ckpt.py` · SHA256 cross-checks |
+| Tests | pytest, 17 CPU-only test files, no simulator required |
+
+## 🗂 Project Structure
+
+```text
+berlin-marso-hackathon/
+├── README.md / README.ko.md           # fork overview (this file)
+├── SUBMISSION.md                      # submission contract (upstream)
+├── submission.yaml                    # ★ RGB-track manifest: policy entrypoint + 3 checkpoints
+├── checkpoints/                       # ★ rgb_dp_{easy,medium,hard}.pt — stripped EMA + config, 35.8 MB each
+├── warehouse_sort/                    # WarehouseSort-v1 env + policy loaders (★ ChunkedPolicy in il_policy.py)
+├── il/                                # imitation learning
+│   ├── conf/method/dp_rgb_*.yaml      # ★ per-level RGB DP configs
+│   ├── train.py · gen_demos.py        # Hydra dispatcher · demo recorder (★ DART noise, jitter overrides)
+│   └── baselines/                     # vendored ManiSkill DP (★ streaming loader, resume) + ACT hedge
+├── conf/                              # difficulty and eval configs (★ per-level max_episode_steps, eval32 / eval64)
+├── tools/                             # ★ validation lane, checkpoint stripping, Colab notebook builders
+├── docs/                              # ★ RESEARCH · EXPERIMENTS · WRITEUP · VALIDATION_PROTOCOL(.json) · REPRODUCE
+├── tests/                             # CPU tests (no simulator)
+├── MARSO_COLAB*.ipynb                 # ★ Colab T4 session notebooks (train · stress rerun · clean-clone smoke)
+├── eval.py · starter.ipynb · pixi.toml · pixi.lock
+└── outputs/                           # ignored: validation evidence, seminar deck, experiment logs
+```
+
+## 🚀 Quick Start
+
+Run the submission the way the judge does (`pixi.lock` pins the judge environment).
 
 ```bash
-# 0. Get pixi (package manager)
-curl -fsSL https://pixi.sh/install.sh | bash
+git clone https://github.com/mrpc2003/berlin-marso-hackathon.git
+cd berlin-marso-hackathon
+pixi install --locked          # torch 2.12.0+cu130 · numpy 2.4.6 · mani_skill 3.0.1
 
-# 1. Install dependencies
-pixi install
-pixi run install        # pip install -e .
+pixi run python eval.py difficulty=hard obs_mode=rgb \
+    policy=warehouse_sort.il_policy:load_dp_rgb \
+    checkpoint=checkpoints/rgb_dp_hard.pt \
+    eval_config=conf/eval/eval32.yaml record_video=false
 
-# 2. Download the demonstrations (state datasets — the Kaggle competition data)
-pixi run python il/download_demos.py
-
-# 3. Train the state Diffusion Policy on the easy demos
-pixi run python il/train.py method=dp demo_dir=easy
-
-# 4. Evaluate
-pixi run python eval.py difficulty=easy \
-    policy=warehouse_sort.il_policy:load_dp \
-    checkpoint=il/baselines/diffusion_policy/runs/warehouse_state_dp_easy/checkpoints/best_eval_sort_accuracy.pt \
-    eval_config=conf/eval/default.yaml
+python -m pytest tests -q      # CPU tests, no simulator needed
 ```
 
-**Demonstrations are provided** for every level — **200 episodes per level**, as the
-[Kaggle competition data](https://www.kaggle.com/competitions/marso-hack-berlin-2026-robot-parcel-sorting-challenge/data).
-On Kaggle the data is mounted automatically; elsewhere fetch it with
-`pixi run python il/download_demos.py` (join the competition + set a Kaggle API token first).
-Either way it stages into `il/demos/<level>/`. Generating your own is optional (see
-[il/README.md](il/README.md)).
+`difficulty=easy|medium` uses the same command with the matching checkpoint. Inference settings (act_horizon, denoising steps) live in each checkpoint's config, so no extra arguments are needed.
 
-### 📊 Training time
+## 📝 Reproducing
 
-The provided state Diffusion Policy is a **starting point, not a finished solution** — train it,
-evaluate, and improve it (see **[Improving the baseline](#-improving-the-baseline)**). Rough
-training time at default settings on a single modern GPU (e.g. Colab T4):
+**Training on Colab T4** (session notebook [MARSO_COLAB.ipynb](MARSO_COLAB.ipynb); hard in [MARSO_COLAB_HARD.ipynb](MARSO_COLAB_HARD.ipynb)):
 
-| level | default train iters | approx. training time |
-|-------|:---:|:---:|
-| easy   | 30k | ~20–40 min |
-| medium | 50k | ~40–70 min |
-| hard   | 60k | ~50–90 min |
-
-(Times scale with hardware and iteration count.)
-
-> ⚠️ **One model per level (state track).** The state vector's size depends on the parcel count,
-> so a checkpoint is **specific to its difficulty level** — train (and submit) a separate
-> checkpoint for easy, medium, and hard.
-
-For a guided walkthrough, open **[starter.ipynb](starter.ipynb)** — or click the badge at the top of this page to launch it directly in Google Colab (select a GPU runtime).
-
-### What you'll submit
-
-You hand us three things (full details in **[SUBMISSION.md](SUBMISSION.md)**):
-
-1. **Your codebase** — a GitHub repo (fork of this one) containing your policy code.
-2. **`submission.yaml`** — declares, per level, the checkpoint path.
-3. **Your checkpoint(s) + a policy entrypoint** — a `module:function` that loads a checkpoint
-   into a policy exposing `act(obs, deterministic=True)` (the provided
-   `warehouse_sort.il_policy:load_dp` already does this). One checkpoint per level (state track).
-
-**To submit:** [**fork**](https://github.com/marso-robotics/berlin-marso-hackathon/fork) this
-repo, do all your work in your fork, and send us your fork's GitHub URL — you never push to this
-repo. Read **[SUBMISSION.md](SUBMISSION.md)** for exactly how to package and submit your entry.
-
----
-
-## 💡 Improving the baseline
-
-Concrete things to try with the state Diffusion Policy (all via `il/train.py` flags or the loader):
-
-- **Train longer / on more data** — raise `flags.total_iters`; record extra demos with
-  `il/gen_demos.py`.
-- **Horizons** — `flags.pred_horizon` (how many actions are predicted), `flags.act_horizon`
-  (how many are executed per inference), `flags.obs_horizon` (state history length). A longer
-  `pred_horizon` often helps on the harder, longer-horizon levels.
-- **Denoising steps at eval** — `num_inference_steps` in `load_dp` (more steps → better actions,
-  slower inference). Eval-only, so safe to raise.
-- **Network capacity** — `unet_dims`, `diffusion_step_embed_dim`.
-- **Optimisation** — `flags.batch_size`, learning rate.
-- **Generalisation** — the held-out configs use wider positions / more bin-swaps than training.
-  Train across that variation rather than overfitting the exact training seeds — hard is
-  weighted 0.5, so this is where the points are.
-
-> ⚠️ If you change an **architecture/horizon** hyperparameter for training (`obs_horizon`,
-> `pred_horizon`, `unet_dims`, `diffusion_step_embed_dim`, `n_groups`, `num_diffusion_iters`),
-> pass the **same value** to your policy loader (`load_dp(...)` args, or your own `load_fn`) — or
-> the checkpoint won't load. See
-> [warehouse_sort/il_policy.py](warehouse_sort/il_policy.py).
-
-For other algorithm ideas (other IL methods, RL), see
-**[Where to find more approaches](#where-to-find-more-approaches)**.
-
----
-
-## 👀 Observation
-
-### State (main track)
-A flat `float32` vector, shape `(num_envs, 54)` for easy (2 parcels):
-
-| slice | field | dims |
-|-------|-------|------|
-| `[0:9]` | joint positions (`qpos`) | 9 |
-| `[9:18]` | joint velocities (`qvel`) | 9 |
-| `[18:25]` | TCP pose (xyz + quat wxyz) | 7 |
-| `[25:26]` | is_grasped | 1 |
-| `[26:...]` | parcel poses (xyz + quat per parcel) | P×7 |
-| `…` | parcel tag colors (one-hot [red, blue]) | P×2 |
-| `…` | bin positions (xyz of red bin, blue bin) | 2×3 |
-| `…` | bin color one-hot | 2×2 |
-
-Total dim = `26 + P×7 + P×2 + 6 + 4` (= 54 for P=2). **Because the size depends on the parcel
-count `P`, a state policy is level-specific — train one checkpoint per difficulty.**
-
-### RGB (optional image track)
-A fixed third-person scene camera. With `FlattenRGBDObservationWrapper`:
-- `obs["rgb"]`: `(N, 128, 128, 3)` uint8 — scene image, RGB channel order
-- `obs["state"]`: `(N, 26)` float32 — proprioception only (no parcel/bin info)
-
-The rgb observation has the same shape at every difficulty (one policy can run on all levels),
-but image IL is not yet solving the task — it's the harder, optional track.
-
----
-
-## 🎮 Action space
-
-`pd_ee_delta_pos`, 4 dims in `[-1, 1]`:
-
-| dims | meaning |
-|------|---------|
-| `[0:3]` | end-effector delta xyz (±0.1 m/step) |
-| `[3]` | gripper: +1 = open, −1 = close |
-
----
-
-## 🎁 Reward
-
-**Sparse only: `+1` per correctly placed parcel.** No dense reward is provided. If you choose
-to train with reinforcement learning, designing a shaped reward is your job.
-
----
-
-## ⚖️ How judging works
-
-A judge evaluates your submission on all three levels using **held-out configs** and reports a
-weighted aggregate (see **Scoring** above). The held-out configs use the same difficulty
-levels, same colors, and same success check as training — only the seeds and position
-randomization ranges differ (slightly wider than training). Evaluation runs the same `eval.py`
-interface you have, so your policy must load and run from your submitted code with no changes.
-
-For exactly how to package and submit your entry, see **[SUBMISSION.md](SUBMISSION.md)**.
-
----
-
-## 📚 References
-
-- **ManiSkill 3** — GPU-accelerated robot simulation: [docs](https://maniskill.readthedocs.io/en/latest/) / [arxiv.org/abs/2410.00425](https://arxiv.org/abs/2410.00425)
-- **Diffusion Policy** — Chi et al. 2023: [diffusion-policy.cs.columbia.edu](https://diffusion-policy.cs.columbia.edu)
-- The state + RGB Diffusion Policy baselines are built on the ManiSkill IL baselines and **[LeRobot](https://github.com/huggingface/lerobot)** conventions.
-
-### Where to find more approaches
-
-Our RGB Diffusion Policy template comes straight from the **[ManiSkill example
-baselines](https://github.com/haosulab/ManiSkill/tree/main/examples/baselines)**. The exact
-pipeline used here lives in `il/baselines/diffusion_policy/` — study `train_rgbd.py` (image DP)
-to understand and extend it. ManiSkill ships many more reference
-implementations (other IL methods, RL, motion planning); browse them in the
-[examples](https://github.com/haosulab/ManiSkill/tree/main/examples) and the
-[baselines docs](https://maniskill.readthedocs.io/en/latest/user_guide/learning_from_demos/index.html)
-for inspiration on how to solve these environments.
-
----
-
-## 📂 Repo layout
-
+```bash
+pip install -e . && python il/download_demos.py           # Kaggle token required; 200 demos per level
+python il/train.py method=dp_rgb_hard                    # 40k iters · latest.pt every 2.5k (resume) · EMA eval every 5k
+python tools/strip_ckpt.py \
+    il/baselines/diffusion_policy/runs/<exp>/checkpoints/best_eval_sort_accuracy.pt \
+    checkpoints/rgb_dp_hard.pt
 ```
-warehouse_sort/     # the ManiSkill environment + IL policy entrypoint
-  env.py            # WarehouseSort-v1 (register, scene, obs, reward, evaluate)
-  il_policy.py      # load_dp (state) / load_dp_rgb (image) — wire into eval.py via policy=...
-  utils.py          # env construction, rollout, metrics printing
 
-conf/               # Hydra configs
-  difficulty/       # easy.yaml / medium.yaml / hard.yaml
-  eval/default.yaml # same-distribution eval (rehearse the judge interface)
+**600-episode validation** (frozen protocol, sealed results):
 
-il/                 # imitation learning
-  gen_demos.py      # record + replay demonstrations (rgb)
-  download_demos.py # fetch the provided rgb demo datasets (from Kaggle)
-  train.py          # Hydra dispatcher -> vendored RGB Diffusion Policy trainer
-  baselines/        # vendored ManiSkill DP baseline (diffusion_policy only)
-
-examples/
-  scripted_policy.py  # deterministic waypoint policy (demo source)
-
-eval.py             # evaluate a checkpoint (same interface as judging)
-judge/              # held-out eval configs (not distributed to competitors)
+```bash
+pixi run python tools/run_generalization.py --run \
+    --manifest docs/VALIDATION_INPUT.example.json --out /content/marso-validation
+pixi run python tools/run_generalization.py --run --stages stress/hard    # one interrupted stage only
 ```
+
+**Clean-clone judge smoke**: [MARSO_CLEAN_CLONE_SMOKE_20260915.ipynb](MARSO_CLEAN_CLONE_SMOKE_20260915.ipynb). The training runtime (torch 2.11) and the judge environment (torch 2.12) differ per episode numerically, so treat differences under 4–5 pt at 100 episodes as noise.
+
+Docs: [RESEARCH.md](docs/RESEARCH.md) (what participants found, what we measured) · [EXPERIMENTS.md](docs/EXPERIMENTS.md) (append-only run log) · [WRITEUP.md](docs/WRITEUP.md) (final report, Korean) · [VALIDATION_PROTOCOL.md](docs/VALIDATION_PROTOCOL.md) · [REPRODUCE.md](docs/REPRODUCE.md).
+
+## 🔒 What Is (Not) in Git
+
+| Tracked | Excluded |
+|---|---|
+| policy, training and validation code, Hydra configs | demonstration datasets (`il/demos/`, fetched from Kaggle) |
+| 3 stripped checkpoints (35.8 MB each) + `submission.yaml` | full trainer checkpoints, optimizer state, TensorBoard logs |
+| frozen protocol JSON, docs, run-log summaries | `outputs/` — raw validation evidence, rollout videos, seminar deck, recovery experiments |
+| 4 session notebooks (train · stress rerun · clean-clone smoke) | 12 intermediate session notebooks, Kaggle and Drive credentials |
+
+`.gitignore` blocks `outputs/`, demo data and run directories. Notebooks read tokens from Colab Secrets and never commit them.
+
+## ⚠️ Limitations
+
+- The numbers above are a local proxy, **not the official held-out score**; the judge's seeds and randomization ranges are unknown.
+- stress hard drops to 0.6467 (all placed 41%, mean 618 of 800 steps). Failures are timeouts and stuck states, not mis-sorts (≤ 1%): the demos come from a single scripted expert and contain no recovery behaviour.
+- Retraining with recovery demos (2026-09-16: DART-style wide-jitter demos, 4 × T4) gave no gain on easy or hard; medium moved +8.75 pt on fresh seeds but −6.5 pt under stress, so the submission was left unchanged.
+- One checkpoint per level: the parcel grid depends on the parcel count, so a hard-only policy does not transfer to easy.
+- Real-robot transfer (camera and contact-physics gaps) was not evaluated; the scope ends at the simulator.
+
+## 📚 Attribution and License
+
+- Upstream starter: [marso-robotics/berlin-marso-hackathon](https://github.com/marso-robotics/berlin-marso-hackathon); its README is kept verbatim in [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md).
+- [ManiSkill 3](https://maniskill.readthedocs.io/en/latest/) ([arXiv 2410.00425](https://arxiv.org/abs/2410.00425)) · [Diffusion Policy](https://diffusion-policy.cs.columbia.edu) (Chi et al. 2023) · [LeRobot](https://github.com/huggingface/lerobot) conventions.
+- Chunked deployment, DrQ random-shift augmentation, resume and per-level episode lengths were ported from participants' public forks and Kaggle write-ups (CC BY 4.0); names are credited in [docs/RESEARCH.md](docs/RESEARCH.md).
+- Code added by this fork is released under the [MIT License](LICENSE). Upstream code and the demonstration data keep their own terms.
+
+## 👤 Author
+
+[@mrpc2003](https://github.com/mrpc2003) — Kim Woohyun, Kookmin University AI major.
+
+<div align="center">
+
+<sub>Camera only, on a free T4, judged by 600 episodes sealed before the first result.</sub>
+
+</div>

@@ -83,8 +83,12 @@ pixi run python eval.py difficulty=hard obs_mode=rgb policy=warehouse_sort.il_po
 - 600회 검증 재현: `tools/run_generalization.py --run`(전체) 또는 `--stages stress/hard`(부분).
   CPU 테스트 `python -m pytest tests -q`.
 - 학습·검증 런타임은 Python 3.12.3, torch 2.11.0+cu128, numpy 1.26.4였다. 스타터 `pixi.toml`은
-  torch 2.12 / numpy 2.4를 고정하므로, 클린 클론에서 `pixi install` 후 eval을 돌리는 스모크
-  (`MARSO_CLEAN_CLONE_SMOKE_20260915.ipynb`)로 이 차이를 확인한다. 결과는 EXPERIMENTS.md에 기록한다.
+  torch 2.12 / numpy 2.4를 고정하므로, 판정 절차 그대로 클린 클론 스모크를 별도 T4 호스트에서 돌려
+  이 차이를 확인했다(2026-09-15, Ubuntu 22.04, 드라이버 580.178): `git clone main` → `pixi install --locked`
+  (141 s, torch 2.12.0+cu130 / numpy 2.4.6 / mani_skill 3.0.1 / sapien 3.0.3) → `eval.py` 6회.
+  결과는 기본 4회 easy/medium/hard 모두 1.000, 32회 easy 0.984 / medium 1.000 / hard 0.953으로
+  학습 런타임의 같은 시드 값(1.000 / 0.984 / 0.964)과 최대 1.6 pt 차이(재현 규정 5% 이내)였다.
+  기록: EXPERIMENTS.md S5, 증거 `outputs/s5_clean_clone_smoke_20260915/`.
 
 ## 6. 한계
 

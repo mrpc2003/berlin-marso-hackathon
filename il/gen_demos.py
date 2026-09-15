@@ -37,14 +37,18 @@ CONTROL_MODE = "pd_ee_delta_pos"   # the fixed task controller (README §Action 
 
 
 def record_raw_demos(out_dir, difficulty, num_episodes, base_seed, max_steps, obs_camera="scene",
-                     action_noise=0.0):
+                     action_noise=0.0, randomization=None):
     """Roll the scripted policy for ``num_episodes`` seeds and save raw .h5 + .json.
 
     ``obs_camera`` is baked into the recorded env_kwargs, so the later ``replay_trajectory`` step
     re-renders the rgb obs from that same camera ("scene" -> fixed third-person view)."""
     os.makedirs(out_dir, exist_ok=True)
-    kwargs = DIFFICULTY_KWARGS[difficulty]
+    kwargs = dict(DIFFICULTY_KWARGS[difficulty])
+    if randomization is not None:          # wider pose randomisation than the level preset
+        kwargs["randomization"] = randomization
+        kwargs["fixed_poses"] = False
     n_parcels = kwargs["num_parcels"]
+    print(f"env kwargs: {kwargs}", flush=True)
 
     env = gym.make(
         "WarehouseSort-v1",
@@ -180,6 +184,12 @@ def main():
                     help="DART-style Gaussian noise (std, action units) injected into the xyz deltas while "
                          "recording; the closed-loop scripted policy self-corrects, so the demos contain "
                          "recovery behaviour instead of 200 identical trajectories (try 0.05-0.1)")
+    ap.add_argument("--xy-jitter", type=float, default=None,
+                    help="override parcel xy jitter half-range (m), e.g. 0.03 -> [-0.03, 0.03]")
+    ap.add_argument("--yaw-jitter", type=float, default=None,
+                    help="override parcel yaw jitter half-range (rad)")
+    ap.add_argument("--swap-prob", type=float, default=None, help="override bin side-swap probability")
+    ap.add_argument("--bin-jitter", type=float, default=None, help="override bin xy jitter half-range (m)")
     ap.add_argument("--no-media", action="store_true",
                     help="skip the demo mp4 + gif")
     ap.add_argument("--media-dir", default=None, help="where to write the demo mp4 + gif")
@@ -189,8 +199,22 @@ def main():
     max_steps = args.max_steps or max(150, 70 * n_parcels)
     out_dir = args.out_dir or os.path.join(repo, "il", "demos", args.difficulty)
 
+    randomization = None
+    if any(v is not None for v in (args.xy_jitter, args.yaw_jitter, args.swap_prob, args.bin_jitter)):
+        import copy
+        randomization = copy.deepcopy(DIFFICULTY_KWARGS[args.difficulty]["randomization"])
+        if args.xy_jitter is not None:
+            randomization["parcel_pose"]["xy_jitter"] = [-args.xy_jitter, args.xy_jitter]
+        if args.yaw_jitter is not None:
+            randomization["parcel_pose"]["yaw_jitter"] = [-args.yaw_jitter, args.yaw_jitter]
+        if args.swap_prob is not None:
+            randomization["bin_position"]["side_swap_prob"] = args.swap_prob
+        if args.bin_jitter is not None:
+            randomization["bin_position"]["xy_jitter"] = [-args.bin_jitter, args.bin_jitter]
+
     h5 = record_raw_demos(out_dir, args.difficulty, args.num_episodes, args.base_seed,
-                          max_steps, obs_camera=args.obs_camera, action_noise=args.action_noise)
+                          max_steps, obs_camera=args.obs_camera, action_noise=args.action_noise,
+                          randomization=randomization)
 
     if not args.no_replay:
         for om in args.obs_modes:
