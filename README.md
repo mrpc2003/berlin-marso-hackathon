@@ -51,7 +51,7 @@ English | [한국어](README.ko.md)
 
 This repository is my fork of [marso-robotics/berlin-marso-hackathon](https://github.com/marso-robotics/berlin-marso-hackathon), the starter for the Kaggle [Marso Hack Berlin 2026 — Robot Parcel Sorting Challenge](https://www.kaggle.com/competitions/marso-hack-berlin-2026-robot-parcel-sorting-challenge). A Franka Panda in ManiSkill 3 has to read the color tag on each parcel and drop it into the matching bin. The competition closed on 2026-06-21; this fork is a post-competition attempt at the optional **RGB track**, trained only on free Colab T4 sessions and validated on a 600-episode protocol that was sealed before any result was seen.
 
-> **TL;DR** — A 6.11M-parameter RGB Diffusion Policy (ResNet18 + SpatialSoftmax → FiLM-conditioned 1D U-Net, DDPM) reaches easy 0.990 / medium 0.890 / hard 0.885 sort accuracy on fresh seeds (weighted 0.9075) and 0.7336 under wider stress randomization. During the competition the verified RGB best was ACT at roughly 0.21 weighted, and no participant reported a nonzero pure-RGB Diffusion Policy score (different judge seeds, so not directly comparable).
+> **TL;DR** — An 8.92M-parameter RGB Diffusion Policy (ResNet18 + SpatialSoftmax → FiLM-conditioned 1D U-Net, DDPM) reaches easy 0.990 / medium 0.890 / hard 0.885 sort accuracy on fresh seeds (weighted 0.9075) and 0.7336 under wider stress randomization. During the competition the verified RGB best was ACT at roughly 0.21 weighted, and no participant reported a nonzero pure-RGB Diffusion Policy score (different judge seeds, so not directly comparable).
 
 What the fork adds: an RGB training and evaluation workflow that fits Colab T4 (chunked deployment, per-level episode budgets, clipped demo actions, streaming h5 loader, exact resume), three stripped checkpoints plus `submission.yaml`, a frozen validation lane (`tools/run_generalization.py`), and Korean write-ups. The original challenge README is preserved verbatim in [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md); the submission contract is in [SUBMISSION.md](SUBMISSION.md).
 
@@ -115,7 +115,7 @@ flowchart LR
 
 | Item | Value |
 |---|---|
-| Algorithm | `BC_Diffusion_rgb_UNet` (`il/baselines/diffusion_policy/train_rgbd.py`) · 6.11M parameters |
+| Algorithm | `BC_Diffusion_rgb_UNet` (`il/baselines/diffusion_policy/train_rgbd.py`) · 8.92M parameters (visual encoder 2.81M + noise-prediction U-Net 6.11M) |
 | Observation / action | rgb 128×128×3 + state 26 · obs_horizon 2 → pred_horizon 16 → act_horizon 8 · 4-d action in `[−1, 1]` |
 | Encoder | ResNet18, ImageNet init, BN→GroupNorm, truncated at layer3 → 1×1 conv 32 → SpatialSoftmax (x, y)×32 → Linear 256 |
 | Noise predictor | ConditionalUnet1D, down_dims [64, 128, 256], kernel 5, GroupNorm 8, mid ×2, FiLM conditioning |
@@ -257,7 +257,7 @@ Docs: [RESEARCH.md](docs/RESEARCH.md) (what participants found, what we measured
 
 ## 👤 Author
 
-[@mrpc2003](https://github.com/mrpc2003) — Kim Woohyun, Kookmin University AI major.
+[@mrpc2003](https://github.com/mrpc2003) — Woohyun Kim, B.S. in Artificial Intelligence, Kookmin University · [mrpc2003.github.io](https://mrpc2003.github.io) · [mrpc2003@kookmin.ac.kr](mailto:mrpc2003@kookmin.ac.kr) · [LinkedIn](https://www.linkedin.com/in/woohyun-kim-118433126/)
 
 <div align="center">
 

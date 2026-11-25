@@ -51,7 +51,7 @@
 
 이 저장소는 Kaggle [Marso Hack Berlin 2026 — Robot Parcel Sorting Challenge](https://www.kaggle.com/competitions/marso-hack-berlin-2026-robot-parcel-sorting-challenge)의 스타터 [marso-robotics/berlin-marso-hackathon](https://github.com/marso-robotics/berlin-marso-hackathon)을 포크한 것이다. ManiSkill 3 안에서 Franka Panda가 소포 윗면의 색 태그를 읽어 같은 색 분류함에 넣는 과제이며, 대회는 2026-06-21에 끝났다. 이 포크는 선택 트랙이던 **RGB 트랙**을 대회 종료 뒤에 끝까지 풀어 본 기록으로, 학습은 무료 Colab T4 세션에서만 했고 검증은 결과를 보기 전에 봉인한 600 에피소드 프로토콜로 했다.
 
-> **한 줄 요약** — 6.11M 파라미터 RGB Diffusion Policy(ResNet18 + SpatialSoftmax → FiLM 조건 1D U-Net, DDPM)가 새 시드에서 easy 0.990 / medium 0.890 / hard 0.885(가중 0.9075), 교란을 넓힌 stress에서 0.7336의 정렬 정확도를 냈다. 대회 당시 검증된 RGB 최고 기록은 ACT의 가중 약 0.21이었고 순수 RGB Diffusion Policy로 0이 아닌 점수를 낸 참가자는 없었다(채점 시드가 달라 직접 비교는 불가).
+> **한 줄 요약** — 8.92M 파라미터 RGB Diffusion Policy(ResNet18 + SpatialSoftmax → FiLM 조건 1D U-Net, DDPM)가 새 시드에서 easy 0.990 / medium 0.890 / hard 0.885(가중 0.9075), 교란을 넓힌 stress에서 0.7336의 정렬 정확도를 냈다. 대회 당시 검증된 RGB 최고 기록은 ACT의 가중 약 0.21이었고 순수 RGB Diffusion Policy로 0이 아닌 점수를 낸 참가자는 없었다(채점 시드가 달라 직접 비교는 불가).
 
 포크가 더한 것은 Colab T4용 RGB 학습·평가 워크플로(청크 실행, 레벨별 에피소드 예산, 시범 행동 클리핑, 스트리밍 h5 로더, 정확한 재개), 제출용 체크포인트 3개와 `submission.yaml`, 고정 검증 레인(`tools/run_generalization.py`), 한국어 보고서다. 원래 스타터 README는 [docs/UPSTREAM_README.md](docs/UPSTREAM_README.md)에 그대로 보존했고, 제출 계약은 [SUBMISSION.md](SUBMISSION.md)에 있다.
 
@@ -115,7 +115,7 @@ flowchart LR
 
 | 항목 | 값 |
 |---|---|
-| 알고리즘 | `BC_Diffusion_rgb_UNet` (`il/baselines/diffusion_policy/train_rgbd.py`) · 파라미터 6.11M |
+| 알고리즘 | `BC_Diffusion_rgb_UNet` (`il/baselines/diffusion_policy/train_rgbd.py`) · 파라미터 8.92M (시각 인코더 2.81M + 노이즈 예측 U-Net 6.11M) |
 | 관측 / 행동 | rgb 128×128×3 + state 26 · obs_horizon 2 → pred_horizon 16 → act_horizon 8 · 행동 4차원 `[−1, 1]` |
 | 인코더 | ResNet18 ImageNet 초기화, BN→GroupNorm, layer3에서 절단 → 1×1 conv 32 → SpatialSoftmax (x, y)×32 → Linear 256 |
 | 잡음 예측기 | ConditionalUnet1D, down_dims [64, 128, 256], kernel 5, GroupNorm 8, mid ×2, FiLM 조건 |
@@ -257,7 +257,7 @@ pixi run python tools/run_generalization.py --run --stages stress/hard    # 중�
 
 ## 👤 작성자
 
-[@mrpc2003](https://github.com/mrpc2003) — 김우현, 국민대학교 AI 전공.
+[@mrpc2003](https://github.com/mrpc2003) — 김우현, 국민대학교 인공지능전공 · [mrpc2003.github.io](https://mrpc2003.github.io) · [mrpc2003@kookmin.ac.kr](mailto:mrpc2003@kookmin.ac.kr) · [LinkedIn](https://www.linkedin.com/in/woohyun-kim-118433126/)
 
 <div align="center">
 
